@@ -167,3 +167,22 @@ def test_silent_picks_up_a_login_done_while_the_app_runs(tmp_path: Path, monkeyp
 
     assert provider.silent() == "fresh"
     assert provider._loaded_mtime_ns == cache_path.stat().st_mtime_ns
+
+
+def test_offline_at_start_does_not_stop_later_uploads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The robot may boot before Wi-Fi is up; uploads must start once Microsoft is reachable."""
+    app = MagicMock()
+    app.get_accounts.return_value = [{"username": "lab@uc.edu"}]
+    app.acquire_token_silent.return_value = {"access_token": "tok"}
+    build = MagicMock(side_effect=[ConnectionError("no network"), app])
+    monkeypatch.setattr(msal, "PublicClientApplication", build)
+    provider = TokenProvider("client", "tenant", cache_path=tmp_path / "cache.json")  # must not touch the network
+    _transcript(tmp_path)
+    graph = FakeGraph()
+    uploader = OneDriveUploader(tmp_path, provider.silent, client=graph.client())
+
+    uploader._safe_upload()  # offline: logged, nothing uploaded
+    assert graph.requests == []
+
+    uploader._safe_upload()  # back online
+    assert len(graph.requests) == 1

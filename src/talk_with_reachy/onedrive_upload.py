@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 # Fill these in from the lab's Microsoft Entra app registration before publishing the app.
 # Neither value is a secret. Environment variables with the names below override them.
-CLIENT_ID = ""
-TENANT = "organizations"
+CLIENT_ID = "07a0d38d-c5ed-48e4-ba3f-da9423fdeb12"  # "Talk with Reachy" app registration, UC tenant
+TENANT = "f5222e6c-5fc6-48eb-8f03-73db18203b63"  # University of Cincinnati
 CLIENT_ID_ENV = "TALK_WITH_REACHY_ONEDRIVE_CLIENT_ID"
 TENANT_ENV = "TALK_WITH_REACHY_ONEDRIVE_TENANT"
 INTERVAL_ENV = "TALK_WITH_REACHY_UPLOAD_INTERVAL_S"
@@ -62,18 +62,33 @@ class TokenProvider:
     """Microsoft sign-in backed by a token cache file that only the robot user can read."""
 
     def __init__(self, client_id: str, tenant: str, cache_path: Path = TOKEN_CACHE_PATH) -> None:
-        """Load the cache and build the MSAL public client."""
+        """Load the token cache. The MSAL client itself is built on first use (see ``_msal_app``)."""
         import msal
 
+        self._client_id = client_id
+        self._tenant = tenant
         self._cache_path = cache_path
         self._cache = msal.SerializableTokenCache()
         self._loaded_mtime_ns = 0
+        self._app: msal.PublicClientApplication | None = None
         self._reload_if_changed()
-        self._app = msal.PublicClientApplication(
-            client_id,
-            authority=f"https://login.microsoftonline.com/{tenant}",
-            token_cache=self._cache,
-        )
+
+    def _msal_app(self) -> Any:
+        """Build the MSAL client on first use.
+
+        Building it contacts Microsoft, so it must not happen at app start: the robot may
+        still be offline then, and uploads should begin as soon as the network comes up.
+        A failure here raises, and the next upload pass simply tries again.
+        """
+        if self._app is None:
+            import msal
+
+            self._app = msal.PublicClientApplication(
+                self._client_id,
+                authority=f"https://login.microsoftonline.com/{self._tenant}",
+                token_cache=self._cache,
+            )
+        return self._app
 
     def _reload_if_changed(self) -> None:
         """Pick up a sign-in done by the login command while the app was already running."""
@@ -97,13 +112,14 @@ class TokenProvider:
 
     def silent(self) -> str | None:
         """Return an access token from the cache, refreshing it if needed, or None if not signed in."""
-        accounts = self._app.get_accounts()
+        app = self._msal_app()
+        accounts = app.get_accounts()
         if not accounts:
             self._reload_if_changed()
-            accounts = self._app.get_accounts()
+            accounts = app.get_accounts()
         if not accounts:
             return None
-        result = self._app.acquire_token_silent(SCOPES, account=accounts[0])
+        result = app.acquire_token_silent(SCOPES, account=accounts[0])
         self._save()
         if result and "access_token" in result:
             return str(result["access_token"])
@@ -111,15 +127,16 @@ class TokenProvider:
 
     def sign_in(self, use_browser: bool) -> str:
         """Run an interactive sign-in and return an access token."""
+        app = self._msal_app()
         result: dict[str, Any]
         if use_browser:
-            result = self._app.acquire_token_interactive(SCOPES)
+            result = app.acquire_token_interactive(SCOPES)
         else:
-            flow = self._app.initiate_device_flow(scopes=SCOPES)
+            flow = app.initiate_device_flow(scopes=SCOPES)
             if "user_code" not in flow:
                 raise RuntimeError(flow.get("error_description") or "Could not start device sign-in")
             print(flow["message"], flush=True)
-            result = self._app.acquire_token_by_device_flow(flow)
+            result = app.acquire_token_by_device_flow(flow)
         self._save()
         if "access_token" not in result:
             raise RuntimeError(result.get("error_description") or "Sign-in failed")
@@ -226,8 +243,9 @@ class OneDriveUploader:
     def _safe_upload(self) -> None:
         try:
             self.upload_pending()
-        except Exception:
-            logger.exception("OneDrive upload pass failed")
+        except Exception as e:
+            # Usually no network yet; keep the log short because this repeats every pass.
+            logger.warning("OneDrive upload pass failed, will retry: %s: %s", type(e).__name__, e)
 
 
 def login_main(argv: list[str] | None = None) -> int:
