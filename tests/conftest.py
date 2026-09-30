@@ -15,6 +15,8 @@ if str(SRC_PATH) not in sys.path:
 # Without this, importing config during test collection can pick up a developer's
 # local .env and fail before tests run.
 os.environ["REACHY_MINI_SKIP_DOTENV"] = "1"
+# Keep test runs from writing transcript files into the real home directory.
+os.environ["TALK_WITH_REACHY_LOGGING"] = "0"
 os.environ.pop("REACHY_MINI_CUSTOM_PROFILE", None)
 os.environ.pop("REACHY_MINI_EXTERNAL_PROFILES_DIRECTORY", None)
 os.environ.pop("REACHY_MINI_EXTERNAL_TOOLS_DIRECTORY", None)

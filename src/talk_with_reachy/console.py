@@ -18,6 +18,7 @@ from reachy_mini import ReachyMini
 from reachy_mini.io.jsonrpc import JsonRpcError
 from reachy_mini.apps.jsonrpc_server import JsonRpcServer
 from reachy_mini.media.media_manager import MediaBackend
+from talk_with_reachy import study_log
 from talk_with_reachy.config import (
     HF_BACKEND,
     LOCKED_PROFILE,
@@ -156,7 +157,8 @@ class LocalStream:
             transcript_setter(self._dispatch_transcript)
 
     def _dispatch_transcript(self, role: str, text: str, final: bool) -> None:
-        """Push a conversation.transcript notification to JSON-RPC clients."""
+        """Log the transcript for the study, then push it to JSON-RPC clients."""
+        study_log.record_utterance(role, text, final)
         if self._rpc is not None:
             self._rpc.broadcast_threadsafe(
                 "conversation.transcript",

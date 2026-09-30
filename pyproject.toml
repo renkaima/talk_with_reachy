@@ -25,6 +25,9 @@ dependencies = [
     "mcp>=2.0,<3",
     "mcp-types>=2.0,<3",
     "httpx2>=2.5.0",
+
+    #Transcript upload to OneDrive (Microsoft Graph auth)
+    "msal>=1.31",
 ]
 
 [dependency-groups]
@@ -40,6 +43,7 @@ dev = [
 
 [project.scripts]
 talk-with-reachy = "talk_with_reachy.main:main"
+talk-with-reachy-onedrive-login = "talk_with_reachy.onedrive_upload:login_main"
 
 [tool.uv]
 exclude-newer = "7 days"

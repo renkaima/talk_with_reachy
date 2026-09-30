@@ -14,7 +14,7 @@ from collections.abc import Callable, Awaitable
 from fastapi import FastAPI, Request, Response
 
 from reachy_mini import ReachyMini, ReachyMiniApp
-from talk_with_reachy import app_lifecycle
+from talk_with_reachy import study_log, app_lifecycle
 from talk_with_reachy.utils import (
     parse_args,
     setup_logger,
@@ -350,11 +350,13 @@ def run(
     if app_stop_event:
         threading.Thread(target=poll_stop_event, daemon=True).start()
 
+    study_log.start()
     try:
         stream_manager.launch()
     except KeyboardInterrupt:
         logger.info("Keyboard interruption in main thread... closing server.")
     finally:
+        study_log.stop()
         if own_ui_server is not None:
             own_ui_server.should_exit = True
 
