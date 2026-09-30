@@ -15,6 +15,7 @@ IGNORE = [
     ".gitattributes",
     ".venv/*",
     "deploy/.deploy-venv/*",
+    "deploy/.onedrive-venv/*",
     "*/__pycache__/*",
     "__pycache__/*",
     "*.pyc",

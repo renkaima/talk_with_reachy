@@ -84,20 +84,29 @@ The two GitHub workflows that sync to Hugging Face (`sync-hf-space.yml`, `pr-hf-
 
 In Reachy Mini Control, sign in to Hugging Face with an account that can see the private Space. Open the app store and search for *Talk with Reachy*. The app appears with a **Private** badge; the store also has a *Private* filter. Install it like any other app.
 
-### 5. Sign the robot in to OneDrive (one time)
+### 5. Sign in to OneDrive (one time)
 
-From a computer on the same network as the robot:
+The easiest path signs in on a Mac and then copies the sign-in to the robot.
+
+**a. On the Mac, no robot needed.** Run:
 
 ```bash
-ssh pollen@<robot-ip>
-/venvs/apps_venv/bin/talk-with-reachy-onedrive-login
+bash deploy/onedrive_dry_run.sh
 ```
 
-The command prints a short code and a Microsoft URL. Open the URL on any phone or laptop, enter the code, and sign in with the UC account whose OneDrive should receive the files. On success the command writes `connection_check.txt` to the OneDrive app folder and prints its link.
+A browser opens for the UC sign-in. Use the UC account whose OneDrive should receive the files. The script then writes `connection_check.txt` to the OneDrive app folder, logs a two-line test conversation with the app's own code, and uploads it. It ends with "Everything works" and the name of the test file under **Apps → Talk with Reachy → transcripts**. You can delete that file afterwards.
 
-The sign-in is stored in `/home/pollen/.config/talk_with_reachy/onedrive_token_cache.json`, readable only by the `pollen` user. If the app is already running, it picks up the new sign-in on its next upload pass; no restart is needed.
+This checks the whole Microsoft side (UC's sign-in policy, the permission, and the upload) before a robot is involved.
 
-**If device-code sign-in is blocked** (some university tenants block it), install this repository on a laptop, run `talk-with-reachy-onedrive-login --browser` there, and copy the resulting `~/.config/talk_with_reachy/onedrive_token_cache.json` to `/home/pollen/.config/talk_with_reachy/` on the robot.
+**b. When the robot is on the same network as the Mac.** Run:
+
+```bash
+bash deploy/copy_login_to_robot.sh            # or: ... copy_login_to_robot.sh <robot-ip>
+```
+
+SSH asks once for the robot's password. The sign-in lands in `/home/pollen/.config/talk_with_reachy/onedrive_token_cache.json`, readable only by the `pollen` user. A running app picks it up on its next upload pass; no restart is needed.
+
+**Alternative: sign in on the robot itself.** Over SSH, run `/venvs/apps_venv/bin/talk-with-reachy-onedrive-login`. It prints a code and a Microsoft URL; open the URL on any phone or laptop, enter the code, and sign in. Some university tenants block this device-code sign-in; the Mac path above avoids it.
 
 ### 6. Check that it works
 

@@ -74,3 +74,4 @@ external_content/profile_toolsets.json
 
 # Local tools created by deploy/publish_to_hf.sh
 deploy/.deploy-venv/
+deploy/.onedrive-venv/
