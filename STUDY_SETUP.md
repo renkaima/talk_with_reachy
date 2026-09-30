@@ -47,6 +47,10 @@ After registering:
 
 `Files.ReadWrite.AppFolder` lets the robot write only to `OneDrive/Apps/Talk with Reachy/`. If the robot is lost, the stored sign-in cannot read or change anything else in the account.
 
+**UC requires administrator approval for this app.** The portal lists `Files.ReadWrite.AppFolder` as not needing admin consent, but that column shows Microsoft's default; UC's own policy overrides it. The first time anyone signs in, Microsoft shows an **Approval required** page with a justification box. Paste a justification such as the one below and click **Request approval**. UC IT reviews it once; after approval, sign in again and it goes through. Nobody has to approve anything after that.
+
+> Research study (PI: Renkai Ma). This app uploads text transcripts from a lab robot to the signed-in user's own OneDrive. It requests only the delegated permission Files.ReadWrite.AppFolder, which is limited to OneDrive/Apps/Talk with Reachy; it cannot read any other files. offline_access lets the device keep uploading without a daily sign-in. Single-tenant public client with no secrets and no application permissions. No audio or video is uploaded.
+
 If UC does not let you create app registrations or consent to the permission yourself, send UC IT exactly that request: a single-tenant public-client registration with the delegated Microsoft Graph permission `Files.ReadWrite.AppFolder` and public client flows enabled.
 
 Then edit `src/talk_with_reachy/onedrive_upload.py`:
