@@ -3,7 +3,7 @@ import asyncio
 import numpy as np
 import pytest
 
-from reachy_mini_conversation_app.streaming import (
+from talk_with_reachy.streaming import (
     AdditionalOutputs,
     wait_for_item,
     audio_to_int16,

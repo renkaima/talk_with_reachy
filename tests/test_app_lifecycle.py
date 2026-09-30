@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 from reachy_mini.reachy_mini import SLEEP_HEAD_POSE
-from reachy_mini_conversation_app import daemon_api, app_lifecycle
-from reachy_mini_conversation_app.tools.core_tools import ToolDependencies
+from talk_with_reachy import daemon_api, app_lifecycle
+from talk_with_reachy.tools.core_tools import ToolDependencies
 
 
 def test_request_stop_current_app_posts_to_daemon(monkeypatch) -> None:

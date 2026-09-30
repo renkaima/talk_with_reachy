@@ -2,9 +2,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reachy_mini_conversation_app.tools import volume_control as volume_control_module
-from reachy_mini_conversation_app.daemon_api import DaemonApiError
-from reachy_mini_conversation_app.tools.core_tools import ToolDependencies
+from talk_with_reachy.tools import volume_control as volume_control_module
+from talk_with_reachy.daemon_api import DaemonApiError
+from talk_with_reachy.tools.core_tools import ToolDependencies
 
 
 def _deps() -> ToolDependencies:

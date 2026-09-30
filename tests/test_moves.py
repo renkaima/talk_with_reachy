@@ -8,13 +8,13 @@ import pytest
 
 from reachy_mini.utils import create_head_pose
 from reachy_mini.utils.interpolation import compose_world_offset
-from reachy_mini_conversation_app.moves import (
+from talk_with_reachy.moves import (
     BreathingMove,
     MovementManager,
     LoopFrequencyStats,
     clone_full_body_pose,
 )
-from reachy_mini_conversation_app.dance_emotion_moves import GotoQueueMove, EmotionQueueMove
+from talk_with_reachy.dance_emotion_moves import GotoQueueMove, EmotionQueueMove
 
 
 class _FakeMove:

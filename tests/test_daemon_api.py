@@ -8,7 +8,7 @@ from http.client import HTTPMessage
 
 import pytest
 
-from reachy_mini_conversation_app import daemon_api
+from talk_with_reachy import daemon_api
 
 
 class _FakeResponse:

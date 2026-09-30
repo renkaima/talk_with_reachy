@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from reachy_mini_conversation_app.tools.tool_constants import ToolState
-from reachy_mini_conversation_app.tools.background_tool_manager import (
+from talk_with_reachy.tools.tool_constants import ToolState
+from talk_with_reachy.tools.background_tool_manager import (
     ToolProgress,
     BackgroundTool,
     ToolCallRoutine,

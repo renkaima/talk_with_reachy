@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "reachy_mini_conversation_app"
+name = "talk_with_reachy"
 version = "1.0.1"
 authors = [{ name = "Pollen Robotics", email = "contact@pollen-robotics.com" }]
 description = ""
@@ -39,7 +39,7 @@ dev = [
 ]
 
 [project.scripts]
-reachy-mini-conversation-app = "reachy_mini_conversation_app.main:main"
+talk-with-reachy = "talk_with_reachy.main:main"
 
 [tool.uv]
 exclude-newer = "7 days"
@@ -49,7 +49,7 @@ exclude-newer = "7 days"
 "reachy-mini-dances-library" = false
 
 [project.entry-points."reachy_mini_apps"]
-reachy_mini_conversation_app = "reachy_mini_conversation_app.main:ReachyMiniConversationApp"
+talk_with_reachy = "talk_with_reachy.main:ReachyMiniConversationApp"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -59,11 +59,11 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-reachy_mini_conversation_app = [
+talk_with_reachy = [
   "static/**/*",
   ".env.example",
 ]
-reachy_talk_data = [
+talk_with_reachy_data = [
   "profiles/**/*.md",
 ]
 
@@ -91,7 +91,7 @@ ignore = [
 length-sort = true
 lines-after-imports = 2
 no-lines-before = ["standard-library", "local-folder"]
-known-local-folder = ["reachy_mini_conversation_app"]
+known-local-folder = ["talk_with_reachy"]
 known-first-party = ["reachy_mini", "reachy_mini_dances_library"]
 split-on-trailing-comma = true
 

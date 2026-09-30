@@ -12,7 +12,7 @@ pytest.importorskip("mcp.server")
 
 from mcp.server import MCPServer
 
-from reachy_mini_conversation_app.mcp_client import (
+from talk_with_reachy.mcp_client import (
     RemoteToolSpec,
     McpTransportError,
     McpToolTimeoutError,

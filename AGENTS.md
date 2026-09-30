@@ -92,7 +92,7 @@ These are the cleanups we make in review over and over. Write code that wouldn't
 ## Project layout
 
 ```
-src/reachy_mini_conversation_app/
+src/talk_with_reachy/
   main.py                 # entry point + CLI (reachy-mini-conversation-app)
   huggingface_realtime.py # Hugging Face backend + shared realtime conversation loop
   conversation_handler.py # wires audio/tools/backend together

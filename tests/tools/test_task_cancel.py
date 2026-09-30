@@ -2,10 +2,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from reachy_mini_conversation_app.tools.core_tools import ToolDependencies
-from reachy_mini_conversation_app.tools.task_cancel import TaskCancel
-from reachy_mini_conversation_app.tools.tool_constants import ToolState
-from reachy_mini_conversation_app.tools.background_tool_manager import BackgroundTool
+from talk_with_reachy.tools.core_tools import ToolDependencies
+from talk_with_reachy.tools.task_cancel import TaskCancel
+from talk_with_reachy.tools.tool_constants import ToolState
+from talk_with_reachy.tools.background_tool_manager import BackgroundTool
 
 
 def _deps() -> ToolDependencies:
