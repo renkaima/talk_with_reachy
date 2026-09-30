@@ -60,7 +60,15 @@ Neither value is a secret.
 
 ### 3. Publish as a private Hugging Face Space
 
-Create a new Space on Hugging Face with SDK **Static** and visibility **Private**. Then push this repository to it:
+The easy way is one command in Terminal on a Mac:
+
+```bash
+bash deploy/publish_to_hf.sh
+```
+
+It sets up the Hugging Face tools inside `deploy/.deploy-venv` (nothing is installed system-wide), opens your browser to sign in to Hugging Face if needed, creates the private Space `<your-account>/talk_with_reachy`, and uploads the app. It stops if a Space with that name already exists and is public. Run it again after any code change to update the Space.
+
+To do it by hand instead, create a new Space with SDK **Static** and visibility **Private**, then push this repository to it:
 
 ```bash
 git lfs install                      # the avatars and images are stored with Git LFS
