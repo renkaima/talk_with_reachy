@@ -1,11 +1,11 @@
 ---
-title: Reachy Mini Conversation App
+title: Talk with Reachy
 emoji: 🎤
 colorFrom: red
 colorTo: blue
 sdk: static
 pinned: false
-short_description: Talk with Reachy Mini!
+short_description: Conversation app that logs transcripts for a study
 suggested_storage: large
 tags:
  - reachy_mini
@@ -13,6 +13,8 @@ tags:
 ---
 
 # Reachy Mini conversation app
+
+> **Talk with Reachy fork.** This copy logs conversation transcripts and uploads them to OneDrive for a research study. See [STUDY_SETUP.md](STUDY_SETUP.md) for what it records and how to set it up. The command `reachy-mini-conversation-app` below is `talk-with-reachy` here.
 
 Conversational app for the Reachy Mini robot combining realtime voice, vision, personality-aware tools, and choreographed motion.
 
