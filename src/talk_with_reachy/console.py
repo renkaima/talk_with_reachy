@@ -157,8 +157,7 @@ class LocalStream:
             transcript_setter(self._dispatch_transcript)
 
     def _dispatch_transcript(self, role: str, text: str, final: bool) -> None:
-        """Log the transcript for the study, then push it to JSON-RPC clients."""
-        study_log.record_utterance(role, text, final)
+        """Push a transcript to JSON-RPC clients (the realtime handler logs it for the study)."""
         if self._rpc is not None:
             self._rpc.broadcast_threadsafe(
                 "conversation.transcript",
@@ -599,7 +598,10 @@ class LocalStream:
         @rpc.method("conversation.mic")  # type: ignore[untyped-decorator]
         def _rpc_mic(params: dict[str, object]) -> dict[str, object]:
             if "muted" in params:
-                self._mic_muted = bool(params["muted"])
+                muted = bool(params["muted"])
+                if muted != self._mic_muted:
+                    study_log.record_event("mic_muted" if muted else "mic_unmuted")
+                self._mic_muted = muted
                 logger.info("Microphone %s via /rpc", "muted" if self._mic_muted else "unmuted")
             return {"muted": self._mic_muted}
 

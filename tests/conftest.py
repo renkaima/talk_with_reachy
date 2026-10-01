@@ -20,3 +20,22 @@ os.environ["TALK_WITH_REACHY_LOGGING"] = "0"
 os.environ.pop("REACHY_MINI_CUSTOM_PROFILE", None)
 os.environ.pop("REACHY_MINI_EXTERNAL_PROFILES_DIRECTORY", None)
 os.environ.pop("REACHY_MINI_EXTERNAL_TOOLS_DIRECTORY", None)
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture
+def study_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    """Turn study logging on into a temp folder, with voice ID and OneDrive upload off."""
+    from talk_with_reachy import voice_id, study_log, onedrive_upload
+
+    monkeypatch.setenv(study_log.LOGGING_ENABLED_ENV, "1")
+    monkeypatch.setenv(study_log.DATA_DIR_ENV, str(tmp_path))
+    monkeypatch.setenv(study_log.ROBOT_ID_ENV, "robotA")
+    monkeypatch.setenv(voice_id.VOICE_ID_ENV, "0")
+    monkeypatch.delenv(onedrive_upload.CLIENT_ID_ENV, raising=False)
+    monkeypatch.setattr(onedrive_upload, "CLIENT_ID", "")
+    monkeypatch.setattr(study_log, "clock_synced", lambda: True)
+    yield tmp_path
+    study_log.stop()

@@ -43,6 +43,7 @@ from talk_with_reachy.prompts import (
     get_session_greeting_prompt,
 )
 from talk_with_reachy.streaming import AdditionalOutputs, audio_to_int16
+from talk_with_reachy.study_recorder import StudyRecorder
 from talk_with_reachy.tools.core_tools import (
     ToolSpec,
     ToolDependencies,
@@ -163,6 +164,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         self._startup_greeting_sent = False
         self._in_flight_tool_calls: set[str] = set()
         self._tool_batch_needs_response = False
+
+        # Study data: transcripts with timing, audio clips, voice ID, and events.
+        self.study = StudyRecorder(notify_model=self._send_system_note)
 
     @staticmethod
     def _sanitize_tool_result_for_model(tool_name: str, tool_result: dict[str, Any]) -> dict[str, Any]:
@@ -454,6 +458,21 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         self._mark_activity("say")
         await self._safe_response_create()
 
+    async def _send_system_note(self, text: str) -> None:
+        """Add a system message to the conversation without asking for a reply."""
+        if not self.connection:
+            return
+        try:
+            await self.connection.conversation.item.create(
+                item={
+                    "type": "message",
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": text}],
+                },
+            )
+        except Exception as e:
+            logger.warning("Failed to send system note: %s", e)
+
     async def _send_startup_greeting_prompt(self) -> None:
         """Prompt the model to open the conversation once the session is ready."""
         if self._startup_greeting_sent or not self.connection:
@@ -732,8 +751,10 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                 self._connected_event.set()
             except Exception:
                 pass
+            self.study.connection_opened()
 
             response_sender_task: asyncio.Task[None] | None = None
+            closed_reason = "closed"
             try:
                 # Start the background tool manager
                 self.tool_manager.start_up(tool_callbacks=[self._handle_tool_result])
@@ -745,6 +766,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                 async for event in self.connection:
                     logger.debug("Realtime event: %s", event.type)
                     if event.type == "input_audio_buffer.speech_started":
+                        self.study.user_speech_started(
+                            str(getattr(event, "item_id", "") or ""), getattr(event, "audio_start_ms", None)
+                        )
                         self._mark_activity("user_speech_started")
                         self._turn_user_done_at = None
                         self._turn_response_created_at = None
@@ -755,6 +779,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         logger.debug("User speech started")
 
                     if event.type == "input_audio_buffer.speech_stopped":
+                        self.study.user_speech_stopped(
+                            str(getattr(event, "item_id", "") or ""), getattr(event, "audio_end_ms", None)
+                        )
                         self._mark_activity("user_speech_stopped")
                         self.deps.movement_manager.set_listening(False)
                         logger.debug("User speech stopped - server will auto-commit with VAD")
@@ -770,6 +797,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         logger.debug("response text done: %s", event.text)
 
                     if event.type == "response.created":
+                        self.study.response_created()
                         self._mark_activity("response_created")
                         self.deps.movement_manager.set_speaking(True)
                         self._response_done_event.clear()
@@ -786,6 +814,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self.deps.movement_manager.set_speaking(False)
                         self._response_done_event.set()
                         self._response_started_or_rejected_event.set()
+                        self.study.response_done()
                         logger.debug("Response done")
 
                     if event.type == "conversation.item.input_audio_transcription.delta":
@@ -829,6 +858,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self._tool_batch_needs_response = False
 
                         await self.output_queue.put(AdditionalOutputs({"role": "user", "content": transcript}))
+                        self.study.user_transcript(str(getattr(event, "item_id", "") or ""), transcript)
                         self._emit_transcript("user", transcript, True)
 
                     # Handle assistant transcription
@@ -838,12 +868,14 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         await self.output_queue.put(
                             AdditionalOutputs({"role": "assistant", "content": event.transcript})
                         )
+                        self.study.assistant_transcript(event.transcript or "")
                         self._emit_transcript("assistant", event.transcript or "", True)
 
                     # Handle audio delta
                     if event.type == "response.output_audio.delta":
                         decoded_pcm_bytes = base64.b64decode(event.delta)
                         decoded_pcm = np.frombuffer(decoded_pcm_bytes, dtype=np.int16).reshape(1, -1)
+                        self.study.assistant_audio(decoded_pcm.size, self.SAMPLE_RATE)
                         self._mark_activity("assistant_audio_delta")
                         if self._turn_user_done_at is not None and self._turn_first_audio_at is None:
                             self._turn_first_audio_at = time.perf_counter()
@@ -934,7 +966,11 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                             await self.output_queue.put(
                                 AdditionalOutputs({"role": "assistant", "content": f"[error] {msg}"})
                             )
+            except BaseException as exc:
+                closed_reason = f"{type(exc).__name__}: {exc}"[:300]
+                raise
             finally:
+                self.study.connection_closed(closed_reason)
                 # Stop the response sender worker.
                 if response_sender_task is not None:
                     response_sender_task.cancel()
@@ -960,7 +996,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         if not self.connection:
             return
 
-        _, audio_frame = frame
+        sample_rate, audio_frame = frame
         if audio_frame.size == 0:
             return
 
@@ -983,9 +1019,12 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         except Exception as e:
             logger.debug("Dropping audio frame: connection not ready (%s)", e)
             return
+        # Only audio the server actually received counts toward its audio_start_ms/audio_end_ms.
+        self.study.mic_audio(sample_rate, audio_frame)
 
     async def shutdown(self) -> None:
         """Shutdown the handler."""
+        self.study.flush()
         # Unblock the response sender worker so it can exit
         self._response_done_event.set()
 

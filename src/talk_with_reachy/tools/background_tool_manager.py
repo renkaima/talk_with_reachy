@@ -13,6 +13,7 @@ from typing import Any, Dict, Callable, Optional, Coroutine
 
 from pydantic import Field, BaseModel, PrivateAttr
 
+from talk_with_reachy import study_log
 from talk_with_reachy.tools.core_tools import (
     ToolDependencies,
     dispatch_tool_call,
@@ -161,6 +162,13 @@ class BackgroundToolManager(BaseModel):
         background_tool._task = async_task
 
         logger.info(f"Started background tool: {background_tool.tool_name} (id={id})")
+        study_log.record_event(
+            "tool_started",
+            tool=tool_name,
+            args=tool_call_routine.args_json_str[:500],
+            idle=is_idle_tool_call,
+            call_id=id,
+        )
 
         return background_tool
 
@@ -190,6 +198,14 @@ class BackgroundToolManager(BaseModel):
             background_tool.status = ToolState.COMPLETED
             logger.debug(f"Background tool completed: {background_tool.tool_name} (id={background_tool.id})")
 
+        study_log.record_event(
+            "tool_finished",
+            tool=background_tool.tool_name,
+            status=str(getattr(background_tool.status, "value", background_tool.status)),
+            duration_s=round(background_tool.completed_at - background_tool.started_at, 2),
+            error=background_tool.error,
+            call_id=background_tool.id,
+        )
         await self._notification_queue.put(background_tool.get_notification())
         logger.debug(f"Queued notification for tool: {background_tool.tool_name} (id={background_tool.id})")
 

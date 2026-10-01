@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+from talk_with_reachy import voice_id
 from talk_with_reachy.config import config, get_default_voice
 from talk_with_reachy.memory import format_memory_for_prompt
 from talk_with_reachy.profile_store import (
@@ -19,6 +20,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_GREETING_PROMPT = (
     "Start the conversation now with a brief, spontaneous greeting in character. "
     "Keep it to one sentence, invite the user in naturally, and vary the wording each time."
+)
+
+# Replaces the shared memory list when voice ID is on: memories are per person and
+# arrive in a system note whenever the person speaking changes.
+VOICE_ID_GUIDANCE = (
+    "Several different people may talk with you. A voice recognition system tells you who is speaking: "
+    'whenever the speaker changes, you receive a system note starting with "Voice ID:" that names the person '
+    "(or gives a label such as V003 for a voice without a name) and lists what you remember about them. "
+    "The note can be wrong; if something does not fit, ask gently. "
+    "What you remember about one person belongs to that person only: never mention it to anyone else. "
+    "The remember and forget tools act on the person speaking now. When someone tells you their name, save it."
 )
 
 
@@ -46,6 +58,8 @@ def get_session_instructions(instance_path: str | Path | None = None) -> str:
     if not instructions:
         raise RuntimeError("Default profile has no usable instructions")
 
+    if voice_id.enabled():
+        return f"{VOICE_ID_GUIDANCE}\n\n{instructions}"
     memory_prompt = format_memory_for_prompt(instance_path)
     if memory_prompt:
         return f"{memory_prompt}\n\n{instructions}"

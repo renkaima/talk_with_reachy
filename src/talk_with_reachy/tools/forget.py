@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from talk_with_reachy import voice_id
 from talk_with_reachy.memory import forget_memory_fact
 from talk_with_reachy.tools.core_tools import Tool, ToolDependencies
 
@@ -36,7 +37,13 @@ class Forget(Tool):
             logger.warning("forget: empty query")
             return {"error": "query must be a non-empty string"}
 
-        result = forget_memory_fact(deps.instance_path, query=query)
+        target = deps.instance_path
+        if voice_id.enabled():
+            target = voice_id.current_person_dir()
+            if target is None:
+                return {"error": "nothing was removed: voice ID does not know who is speaking right now"}
+
+        result = forget_memory_fact(target, query=query)
         if result.removed is None:
             logger.info("Tool call: forget query=%s no_match", query[:120])
             return {"error": f'no memory matched "{query}"; nothing was removed'}

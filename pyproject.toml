@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "talk_with_reachy"
-version = "1.0.1"
+version = "1.1.0"
 authors = [{ name = "Pollen Robotics", email = "contact@pollen-robotics.com" }]
 description = ""
 readme = "README.md"
@@ -28,6 +28,12 @@ dependencies = [
 
     #Transcript upload to OneDrive (Microsoft Graph auth)
     "msal>=1.31",
+
+    #Voice identification (speaker embeddings, runs on the robot's CPU).
+    #Most sherpa-onnx wheels need the matching core package, but its sdist does not
+    #declare it, so lockers miss it; list it explicitly and keep the versions equal.
+    "sherpa-onnx==1.13.8",
+    "sherpa-onnx-core==1.13.8; platform_machine != 'armv7l'",
 ]
 
 [dependency-groups]
@@ -44,6 +50,7 @@ dev = [
 [project.scripts]
 talk-with-reachy = "talk_with_reachy.main:main"
 talk-with-reachy-onedrive-login = "talk_with_reachy.onedrive_upload:login_main"
+talk-with-reachy-voices = "talk_with_reachy.voices_cli:main"
 
 [tool.uv]
 exclude-newer = "7 days"

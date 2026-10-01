@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from talk_with_reachy import voice_id
 from talk_with_reachy.memory import add_memory_fact
 from talk_with_reachy.tools.core_tools import Tool, ToolDependencies
 
@@ -40,9 +41,21 @@ class Remember(Tool):
             logger.warning("remember: empty fact")
             return {"error": "fact must be a non-empty string"}
 
-        stored = add_memory_fact(deps.instance_path, fact)
+        target = deps.instance_path
+        speaker_id = None
+        if voice_id.enabled():
+            # Memories are per person: save to whoever voice ID says is speaking now.
+            speaker_id = voice_id.current_speaker()
+            target = voice_id.current_person_dir()
+            if target is None:
+                return {"error": "nothing was saved: voice ID does not know who is speaking right now"}
+
+        stored = add_memory_fact(target, fact)
         if stored is None:
             return {"error": "fact was empty or invalid; nothing was saved"}
 
-        logger.info("Tool call: remember fact=%s", stored.text[:120])
-        return {"saved": stored.text, "memory_id": stored.id}
+        logger.info("Tool call: remember fact=%s speaker=%s", stored.text[:120], speaker_id)
+        result = {"saved": stored.text, "memory_id": stored.id}
+        if speaker_id is not None:
+            result["about"] = speaker_id
+        return result

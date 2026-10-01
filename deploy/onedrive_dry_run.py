@@ -2,9 +2,9 @@
 
 1. Signs in to Microsoft in the browser (the same sign-in the robot needs) and
    writes connection_check.txt to OneDrive/Apps/Talk with Reachy/.
-2. Logs a two-line fake conversation with the app's own transcript logger and
+2. Logs a two-line fake conversation with the app's own study logger and
    stops it, which triggers the app's own final upload.
-3. Confirms the finished file reached OneDrive.
+3. Confirms the finished transcript and its CSV timeline reached OneDrive.
 
 The sign-in is saved in ~/.config/talk_with_reachy/onedrive_token_cache.json, which
 copy_login_to_robot.sh can later copy to the robot so it never needs its own sign-in.
@@ -14,6 +14,7 @@ Run through onedrive_dry_run.sh.
 import os
 import sys
 import json
+import time
 import logging
 import tempfile
 from pathlib import Path
@@ -21,10 +22,30 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from talk_with_reachy import study_log, onedrive_upload  # noqa: E402
+from talk_with_reachy import voice_id, study_log, onedrive_upload  # noqa: E402
 
 
 DRY_RUN_ROBOT_ID = "DRY-RUN-no-robot"
+
+
+def _log_line(speaker: str, text: str, seconds: float) -> None:
+    """Write one utterance that ended just now and lasted ``seconds``."""
+
+    def write() -> None:
+        session = study_log.current_session()
+        if session is not None:
+            now_wall, now_mono = time.time(), time.monotonic()
+            session.utterance(
+                speaker,
+                text,
+                seq=session.next_seq(),
+                start_wall=now_wall - seconds,
+                end_wall=now_wall,
+                start_mono=now_mono - seconds,
+                fields={"speaker_id": "DRY-RUN" if speaker == "person" else "reachy"},
+            )
+
+    study_log.submit(write)
 
 
 def main(sign_in: bool = True) -> int:
@@ -41,23 +62,26 @@ def main(sign_in: bool = True) -> int:
     os.environ[study_log.LOGGING_ENABLED_ENV] = "1"
     os.environ[study_log.DATA_DIR_ENV] = str(data_dir)
     os.environ[study_log.ROBOT_ID_ENV] = DRY_RUN_ROBOT_ID
+    os.environ[voice_id.VOICE_ID_ENV] = "0"  # no speaker model needed for this check
     study_log.start()
-    study_log.record_utterance("user", "Hi Reachy, this is a dry run without a robot.", True)
-    study_log.record_utterance("assistant", "Hello! If you can read this in OneDrive, uploads work.", True)
+    _log_line("person", "Hi Reachy, this is a dry run without a robot.", 2.5)
+    _log_line("reachy", "Hello! If you can read this in OneDrive, uploads work.", 3.0)
     study_log.stop(upload_timeout_s=60)
 
     (transcript,) = study_log.transcripts_dir(data_dir).glob("*.jsonl")
     state_path = data_dir / onedrive_upload.STATE_FILENAME
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
-    stat = transcript.stat()
-    if state.get(transcript.name) != [stat.st_size, stat.st_mtime_ns]:
-        print("FAILED: the transcript was written but not uploaded. See the messages above.")
-        return 1
+    for path in (transcript, transcript.with_suffix(".csv")):
+        stat = path.stat()
+        if state.get(f"transcripts/{path.name}") != [stat.st_size, stat.st_mtime_ns]:
+            print(f"FAILED: {path.name} was written but not uploaded. See the messages above.")
+            return 1
 
     print()
     print("Everything works. In OneDrive, open:")
     print(f"  Apps > Talk with Reachy > transcripts > {transcript.name}")
-    print("It is a test file; delete it whenever you like.")
+    print(f"  (and {transcript.with_suffix('.csv').name}, the same timeline as a spreadsheet)")
+    print("They are test files; delete them whenever you like.")
     return 0
 
 

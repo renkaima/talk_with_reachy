@@ -1,12 +1,16 @@
-"""Upload transcript files to OneDrive through Microsoft Graph.
+"""Upload study files to OneDrive through Microsoft Graph.
 
 The robot signs in once as a UC account and keeps the resulting token cache
 in ``~/.config/talk_with_reachy/``. The token only carries the delegated
 permission ``Files.ReadWrite.AppFolder``, so whoever holds it can reach
 ``OneDrive/Apps/<app registration name>/`` and nothing else in that account.
 
+Everything under the data folder's ``transcripts/``, ``audio/`` and ``people/``
+folders is mirrored to the same relative path in the app folder. The speaker
+model (``models/``), the upload bookkeeping file, and hidden temp files are not.
+
 Uploads are whole-file PUTs. Graph replaces an existing file on PUT, so a
-transcript that is still growing is simply re-uploaded until the run ends.
+file that is still growing is simply re-uploaded until the run ends.
 Files that fail to upload stay on the robot and are retried on the next pass.
 
 Run ``talk-with-reachy-onedrive-login`` on the robot (over SSH) to sign in.
@@ -19,6 +23,7 @@ import json
 import socket
 import logging
 import argparse
+import mimetypes
 import threading
 from typing import Any
 from pathlib import Path
@@ -28,6 +33,7 @@ from collections.abc import Callable
 
 import httpx
 
+from talk_with_reachy import study_log
 from talk_with_reachy.study_log import FILE_LOCK, DATA_DIR_ENV, DEFAULT_DATA_DIR, transcripts_dir
 
 
@@ -44,7 +50,8 @@ DEFAULT_INTERVAL_S = 300.0
 
 SCOPES = ["Files.ReadWrite.AppFolder"]
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
-REMOTE_TRANSCRIPTS_FOLDER = "transcripts"
+# Uploaded in this order, so transcripts reach OneDrive before the bulkier audio.
+UPLOADED_FOLDERS = ("transcripts", "people", "audio")
 STATE_FILENAME = "upload_state.json"
 TOKEN_CACHE_PATH = Path.home() / ".config" / "talk_with_reachy" / "onedrive_token_cache.json"
 
@@ -153,14 +160,15 @@ class OneDriveUploader:
         interval_s: float = DEFAULT_INTERVAL_S,
         client: httpx.Client | None = None,
     ) -> None:
-        """Remember where transcripts live and which files were already uploaded."""
-        self._folder = transcripts_dir(data_dir)
+        """Remember where study files live and which files were already uploaded."""
+        self._data_dir = data_dir
         self._state_path = data_dir / STATE_FILENAME
         self._get_token = get_token
         self._interval_s = interval_s
         self._client = client or httpx.Client(timeout=30.0)
         self._state = self._load_state()
         self._warned_signed_out = False
+        self._failing = False
 
     @classmethod
     def from_env(cls, data_dir: Path) -> OneDriveUploader | None:
@@ -189,11 +197,23 @@ class OneDriveUploader:
         stat = path.stat()
         return [stat.st_size, stat.st_mtime_ns]
 
+    def study_files(self) -> list[tuple[str, Path]]:
+        """Every file to mirror, as (path relative to the data folder, local path)."""
+        files: list[tuple[str, Path]] = []
+        for folder in UPLOADED_FOLDERS:
+            root = self._data_dir / folder
+            if not root.is_dir():
+                continue
+            for path in sorted(root.rglob("*")):
+                relative = path.relative_to(self._data_dir)
+                hidden = any(part.startswith(".") for part in relative.parts)
+                if path.is_file() and not hidden and path.suffix not in (".tmp", ".part"):
+                    files.append((relative.as_posix(), path))
+        return files
+
     def upload_pending(self) -> int:
-        """Upload every transcript that changed since its last successful upload; return how many."""
-        if not self._folder.exists():
-            return 0
-        pending = [p for p in sorted(self._folder.glob("*.jsonl")) if self._state.get(p.name) != self._fingerprint(p)]
+        """Upload every study file that changed since its last successful upload; return how many."""
+        pending = [(rel, p) for rel, p in self.study_files() if self._state.get(rel) != self._fingerprint(p)]
         if not pending:
             return 0
 
@@ -202,35 +222,50 @@ class OneDriveUploader:
             if not self._warned_signed_out:
                 logger.warning(
                     "OneDrive: not signed in. Run talk-with-reachy-onedrive-login on the robot. "
-                    "Transcripts are kept in %s until then.",
-                    self._folder,
+                    "Study files are kept in %s until then.",
+                    self._data_dir,
                 )
+                study_log.record_event("onedrive_signed_out")
                 self._warned_signed_out = True
             return 0
         self._warned_signed_out = False
 
         uploaded = 0
-        for path in pending:
+        failures: list[str] = []
+        for relative, path in pending:
             with FILE_LOCK:
                 fingerprint = self._fingerprint(path)
                 body = path.read_bytes()
+            content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            if content_type.startswith("text/") or path.suffix in (".jsonl", ".json"):
+                content_type = "text/plain; charset=utf-8"
             try:
                 response = self._client.put(
-                    upload_url(f"{REMOTE_TRANSCRIPTS_FOLDER}/{path.name}"),
+                    upload_url(relative),
                     content=body,
-                    headers={"Authorization": f"Bearer {token}", "Content-Type": "text/plain; charset=utf-8"},
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": content_type},
                 )
                 response.raise_for_status()
             except httpx.HTTPError as e:
-                logger.warning("OneDrive upload failed for %s, will retry: %s", path.name, e)
+                logger.warning("OneDrive upload failed for %s, will retry: %s", relative, e)
+                failures.append(f"{relative}: {e}")
                 continue
-            self._state[path.name] = fingerprint
+            self._state[relative] = fingerprint
             uploaded += 1
 
         if uploaded:
             self._save_state()
-            logger.info("Uploaded %d transcript file(s) to OneDrive", uploaded)
+            logger.info("Uploaded %d study file(s) to OneDrive", uploaded)
+        self._note_failures(failures)
         return uploaded
+
+    def _note_failures(self, failures: list[str]) -> None:
+        """Log upload trouble to the study log only when it starts or ends, not on every pass."""
+        if failures and not self._failing:
+            study_log.record_event("onedrive_upload_failing", files=len(failures), first_error=failures[0][:300])
+        elif not failures and self._failing:
+            study_log.record_event("onedrive_upload_recovered")
+        self._failing = bool(failures)
 
     def run_until(self, stop_event: threading.Event) -> None:
         """Upload on every interval until ``stop_event`` is set, then make one final pass."""
@@ -246,6 +281,7 @@ class OneDriveUploader:
         except Exception as e:
             # Usually no network yet; keep the log short because this repeats every pass.
             logger.warning("OneDrive upload pass failed, will retry: %s: %s", type(e).__name__, e)
+            self._note_failures([f"{type(e).__name__}: {e}"])
 
 
 def login_main(argv: list[str] | None = None) -> int:
