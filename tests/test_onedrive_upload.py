@@ -150,8 +150,9 @@ def test_token_cache_is_readable_by_owner_only(tmp_path: Path, monkeypatch: pyte
     provider._cache.has_state_changed = True
     provider._save()
 
-    assert stat.S_IMODE(os.stat(cache_path).st_mode) == 0o600
-    assert stat.S_IMODE(os.stat(cache_path.parent).st_mode) == 0o700
+    if os.name != "nt":  # Windows has no POSIX permission bits
+        assert stat.S_IMODE(os.stat(cache_path).st_mode) == 0o600
+        assert stat.S_IMODE(os.stat(cache_path.parent).st_mode) == 0o700
 
 
 def test_silent_picks_up_a_login_done_while_the_app_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

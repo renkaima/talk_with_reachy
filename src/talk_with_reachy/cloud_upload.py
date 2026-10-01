@@ -113,7 +113,9 @@ class StudyUploader:
             root = self._data_dir / folder
             if not root.is_dir():
                 continue
-            for path in sorted(root.rglob("*")):
+            # Sort by the POSIX path string so the order is the same on every OS
+            # (Windows compares paths case-insensitively).
+            for path in sorted(root.rglob("*"), key=lambda p: p.as_posix()):
                 relative = path.relative_to(self._data_dir)
                 hidden = any(part.startswith(".") for part in relative.parts)
                 if path.is_file() and not hidden and path.suffix not in (".tmp", ".part"):

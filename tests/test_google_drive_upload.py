@@ -129,7 +129,7 @@ def test_a_growing_file_is_updated_in_place(tmp_path: Path) -> None:
     uploader = _uploader(tmp_path, drive)
     uploader.upload_pending()
 
-    path.write_text("{}\n{}\n", encoding="utf-8")
+    path.write_bytes(b"{}\n{}\n")  # bytes, so Windows does not turn \n into \r\n
     assert uploader.upload_pending() == 1
 
     (only,) = drive.files("r_1.jsonl")
@@ -247,8 +247,9 @@ def test_device_sign_in_waits_for_the_user_and_saves_a_private_token(tmp_path: P
     assert waits == [5, 5, 10]
     saved = json.loads(token_path.read_text())
     assert saved["refresh_token"] == "ref"
-    assert stat.S_IMODE(os.stat(token_path).st_mode) == 0o600
-    assert stat.S_IMODE(os.stat(token_path.parent).st_mode) == 0o700
+    if os.name != "nt":  # Windows has no POSIX permission bits
+        assert stat.S_IMODE(os.stat(token_path).st_mode) == 0o600
+        assert stat.S_IMODE(os.stat(token_path.parent).st_mode) == 0o700
 
 
 def test_a_blocked_sign_in_says_why(tmp_path: Path) -> None:
