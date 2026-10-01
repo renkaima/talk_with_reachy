@@ -1,0 +1,10 @@
+---
+title: "Talk with Reachy"
+---
+
+Talk with Reachy is research software for a Reachy Mini robot. It is used in a study at the University of Cincinnati led by Renkai Ma, and it is not offered to the public.
+
+The software lets the robot hold spoken conversations and records them for the study. When a study team member signs in with a Google account, the robot saves its study files to a "Talk with Reachy" folder in that account's Google Drive.
+
+- [Privacy policy](talk-with-reachy-privacy.html)
+- Contact: renkai96130@gmail.com

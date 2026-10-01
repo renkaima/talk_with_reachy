@@ -1,0 +1,41 @@
+---
+title: "Talk with Reachy: Privacy Policy"
+date: 2026-10-01
+---
+
+Talk with Reachy is research software for a Reachy Mini robot used in a study at the University of Cincinnati (principal investigator: Renkai Ma). This page explains what the software does with Google account data.
+
+## Access to your Google account
+
+The software asks for one Google permission, `drive.file`. With it, the software can create files in your Google Drive and can see and change only the files it created. It cannot see any other file in your Drive.
+
+## What the software stores in your Google Drive
+
+The robot copies its study files into a "Talk with Reachy" folder in the Google Drive of the account that signed in on the robot:
+
+- conversation transcripts with timestamps;
+- audio clips of what people said to the robot;
+- voice profiles that the robot uses to tell speakers apart;
+- short notes the robot saved about individual speakers.
+
+The same files are also kept on the robot. The robot keeps its Google sign-in in a file that only the robot's user account can read.
+
+## What the developer receives
+
+The developer does not run a server that receives Google user data. Files go directly from the robot to the signed-in Google Drive. Google user data is not sold, is not used for advertising, is not shared with third parties, and is not used to train AI models.
+
+Talk with Reachy's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
+
+## Speech processing
+
+To hold a conversation, the robot sends microphone audio to a speech service that Pollen Robotics hosts on Hugging Face. This is separate from the Google account and does not involve Google user data.
+
+## Removing access and data
+
+You can remove the software's access at any time at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Files the software created stay in your Drive until you delete them.
+
+Participation in the study, and how study data is handled, is described in the study's consent materials.
+
+## Contact
+
+renkai96130@gmail.com
