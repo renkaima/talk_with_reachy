@@ -274,6 +274,9 @@ def test_silent_uses_the_cached_token_then_refreshes(tmp_path: Path) -> None:
     data = json.loads(token_path.read_text())
     data["expires_at"] = time.time() - 1
     token_path.write_text(json.dumps(data))
+    # Move the modification time forward: Windows can keep the same mtime for two quick writes.
+    st = token_path.stat()
+    os.utime(token_path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
     assert provider.silent() == "new"
     assert auth.requests[0]["refresh_token"] == ["ref"]
     assert json.loads(token_path.read_text())["refresh_token"] == "ref"
