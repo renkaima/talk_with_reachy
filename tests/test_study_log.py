@@ -37,7 +37,15 @@ def test_session_has_header_utterances_events_and_footer(study_dir: Path) -> Non
     study_log.stop()
 
     recs = records(study_dir)
-    assert [r["type"] for r in recs] == ["session_start", "utterance", "event", "utterance", "session_end"]
+    assert [r["type"] for r in recs] == [
+        "session_start",
+        "utterance",
+        "event",
+        "utterance",
+        "speaker_summary",
+        "speaker_summary",
+        "session_end",
+    ]
     header = recs[0]
     assert header["schema_version"] == study_log.SCHEMA_VERSION
     assert header["robot_id"] == "robotA"
@@ -74,6 +82,7 @@ def test_csv_timeline_matches_the_jsonl(study_dir: Path) -> None:
         0.0,
         1.0,
         speaker_id="V001",
+        speaker_name="Alice",
         match_score=0.5,
         id_status="matched",
         overlaps_reachy=True,
@@ -83,10 +92,10 @@ def test_csv_timeline_matches_the_jsonl(study_dir: Path) -> None:
     study_log.stop()
 
     rows = csv_rows(study_dir)
-    assert [r["kind"] for r in rows] == ["event", "utterance", "event", "event"]
+    assert [r["kind"] for r in rows] == ["event", "utterance", "event", "summary", "event"]
     person = rows[1]
     assert person["speaker"] == "person"
-    assert person["speaker_id"] == "V001"
+    assert (person["speaker_id"], person["speaker_name"]) == ("V001", "Alice")
     assert person["match_score"] == "0.50"
     assert (person["id_status"], person["flags"]) == ("matched", "overlaps_reachy")
     assert person["text"] == "你好，Reachy"
@@ -155,3 +164,31 @@ def test_format_elapsed() -> None:
     """Elapsed time reads as H:MM:SS.s."""
     assert study_log.format_elapsed(0) == "0:00:00.0"
     assert study_log.format_elapsed(3725.44) == "1:02:05.4"
+
+
+def test_session_ends_with_a_summary_per_speaker(study_dir: Path) -> None:
+    """Each speaker gets one summary with their utterance count, total speech, and latest name."""
+    study_log.start()
+    _utterance("person", "Hi", 0.0, 1.5, speaker_id="P01")
+    _utterance("reachy", "Hello!", 2.0, 1.0, speaker_id="reachy", speaker_name="Reachy")
+    _utterance("person", "I'm Alice", 3.0, 2.25, speaker_id="P01", speaker_name="Alice")
+    _utterance("person", "And I'm Bob", 6.0, 0.5, speaker_id="V002")
+    study_log.stop()
+
+    summaries = [r for r in records(study_dir) if r["type"] == "speaker_summary"]
+    assert [(s["speaker_id"], s["speaker_name"], s["utterances"]) for s in summaries] == [
+        ("P01", "Alice", 2),
+        ("reachy", "Reachy", 1),
+        ("V002", "", 1),
+    ]
+    assert summaries[0]["speech_s"] == pytest.approx(3.75, abs=0.01)
+    assert summaries[0]["speaker"] == "person"
+
+    rows = [r for r in csv_rows(study_dir) if r["kind"] == "summary"]
+    assert [(r["speaker_id"], r["speaker_name"]) for r in rows] == [
+        ("P01", "Alice"),
+        ("reachy", "Reachy"),
+        ("V002", ""),
+    ]
+    assert rows[0]["text"] == "2 utterances, 0:00:03.8 of speech"
+    assert rows[2]["text"] == "1 utterance, 0:00:00.5 of speech"

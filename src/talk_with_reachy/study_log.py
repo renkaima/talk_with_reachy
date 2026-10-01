@@ -46,7 +46,7 @@ ROBOT_ID_ENV = "TALK_WITH_REACHY_ROBOT_ID"
 DEFAULT_DATA_DIR = Path.home() / "talk_with_reachy_data"
 TRANSCRIPTS_SUBDIR = "transcripts"
 AUDIO_SUBDIR = "audio"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3  # 3: speaker_name column and speaker_summary records
 
 # Upstream role names mapped to the labels used in the study data.
 SPEAKER_BY_ROLE = {"user": "person", "assistant": "reachy"}
@@ -60,6 +60,7 @@ CSV_COLUMNS = [
     "kind",
     "speaker",
     "speaker_id",
+    "speaker_name",
     "match_score",
     "id_status",
     "flags",
@@ -154,6 +155,8 @@ class TranscriptSession:
         self.started_mono = time.monotonic()
         self._seq = 0
         self._utterances = 0
+        # Per speaker_id, in order of first utterance: speaker, latest name, utterance count, seconds of speech.
+        self._speakers: dict[str, dict[str, Any]] = {}
         started = datetime.now()
         folder = transcripts_dir(data_dir)
         folder.mkdir(parents=True, exist_ok=True)
@@ -232,6 +235,7 @@ class TranscriptSession:
             "text": text,
         }
         self._write(record)
+        self._count_speech(speaker, extra, duration)
         score = extra.get("match_score")
         self._csv_row(
             {
@@ -243,6 +247,7 @@ class TranscriptSession:
                 "kind": "utterance",
                 "speaker": speaker,
                 "speaker_id": extra.get("speaker_id"),
+                "speaker_name": extra.get("speaker_name") or None,
                 "match_score": f"{score:.2f}" if isinstance(score, float) else None,
                 "id_status": extra.get("id_status"),
                 "flags": " ".join(flag for flag in CSV_FLAGS if extra.get(flag)) or None,
@@ -250,6 +255,16 @@ class TranscriptSession:
                 "audio_file": extra.get("audio_file"),
             }
         )
+
+    def _count_speech(self, speaker: str, extra: dict[str, Any], duration: float) -> None:
+        speaker_id = str(extra.get("speaker_id") or speaker)
+        stats = self._speakers.setdefault(
+            speaker_id, {"speaker": speaker, "speaker_name": "", "utterances": 0, "speech_s": 0.0}
+        )
+        if extra.get("speaker_name"):
+            stats["speaker_name"] = extra["speaker_name"]
+        stats["utterances"] += 1
+        stats["speech_s"] = round(stats["speech_s"] + duration, 3)
 
     def event(self, name: str, mono_time: float, fields: dict[str, Any]) -> None:
         """Append one event (tool call, interruption, system status...)."""
@@ -261,8 +276,27 @@ class TranscriptSession:
         )
 
     def close(self, mono_time: float) -> None:
-        """Write the session footer."""
+        """Write one summary per speaker, then the session footer."""
         elapsed = self.elapsed_s(mono_time)
+        for speaker_id, stats in self._speakers.items():
+            now = _now()
+            self._write(
+                {"type": "speaker_summary", "time": now, "elapsed_s": elapsed, "speaker_id": speaker_id, **stats}
+            )
+            count = stats["utterances"]
+            self._csv_row(
+                {
+                    "start": now,
+                    "elapsed": format_elapsed(elapsed),
+                    "kind": "summary",
+                    "speaker": stats["speaker"],
+                    "speaker_id": speaker_id,
+                    "speaker_name": stats["speaker_name"] or None,
+                    "duration_s": stats["speech_s"],
+                    "text": f"{count} utterance{'' if count == 1 else 's'}, "
+                    f"{format_elapsed(stats['speech_s'])} of speech",
+                }
+            )
         self._write({"type": "session_end", "time": _now(), "elapsed_s": elapsed, "utterances": self._utterances})
         self._csv_row({"kind": "event", "start": _now(), "elapsed": format_elapsed(elapsed), "text": "session_end"})
 

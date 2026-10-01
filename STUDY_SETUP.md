@@ -30,13 +30,15 @@ talk_with_reachy_data/
 
 ### Transcript records
 
-Each line of the JSONL file is one record. The first record is `session_start` and the last is `session_end`. In between are `utterance` and `event` records, in the order in which they happened:
+Each line of the JSONL file is one record. The first record is `session_start` and the last is `session_end`. In between are `utterance` and `event` records, in the order in which they happened. When the app stops normally, one `speaker_summary` record per speaker comes just before `session_end`:
 
 ```json
-{"session_id": "9f2c…", "type": "session_start", "time": "2026-10-01 09:00:12.345-04:00", "elapsed_s": 0.0, "schema_version": 2, "robot_id": "reachy-mini", "app_version": "1.1.0", "utc_offset": "-0400", "clock_synced": true, "voice_id": {"enabled": true, "model": "nemo_en_titanet_small.onnx", "match_threshold": 0.45}}
-{"session_id": "9f2c…", "type": "utterance", "seq": 1, "time": "2026-10-01 09:00:16.020-04:00", "start": "2026-10-01 09:00:13.101-04:00", "end": "2026-10-01 09:00:15.870-04:00", "duration_s": 2.769, "elapsed_s": 0.756, "speaker": "person", "speaker_id": "P01", "match_score": 0.712, "id_status": "matched", "audio_file": "audio/reachy-mini_20261001-090012_9f2c12/0001_P01.wav", "text": "Hi Reachy, what are you doing?"}
+{"session_id": "9f2c…", "type": "session_start", "time": "2026-10-01 09:00:12.345-04:00", "elapsed_s": 0.0, "schema_version": 3, "robot_id": "reachy-mini", "app_version": "1.1.0", "utc_offset": "-0400", "clock_synced": true, "voice_id": {"enabled": true, "model": "nemo_en_titanet_small.onnx", "match_threshold": 0.45}}
+{"session_id": "9f2c…", "type": "utterance", "seq": 1, "time": "2026-10-01 09:00:16.020-04:00", "start": "2026-10-01 09:00:13.101-04:00", "end": "2026-10-01 09:00:15.870-04:00", "duration_s": 2.769, "elapsed_s": 0.756, "speaker": "person", "speaker_id": "P01", "speaker_name": "Alice", "match_score": 0.712, "id_status": "matched", "audio_file": "audio/reachy-mini_20261001-090012_9f2c12/0001_P01.wav", "text": "Hi Reachy, what are you doing?"}
 {"session_id": "9f2c…", "type": "event", "event": "tool_started", "time": "2026-10-01 09:00:16.900-04:00", "elapsed_s": 4.555, "tool": "dance", "args": "{\"move\": \"happy\"}", "idle": false, "call_id": "call_8"}
-{"session_id": "9f2c…", "type": "utterance", "seq": 2, "time": "2026-10-01 09:00:19.410-04:00", "start": "2026-10-01 09:00:16.430-04:00", "end": "2026-10-01 09:00:19.300-04:00", "duration_s": 2.87, "elapsed_s": 4.085, "speaker": "reachy", "speaker_id": "reachy", "text": "Just looking around! Want to see a dance?"}
+{"session_id": "9f2c…", "type": "utterance", "seq": 2, "time": "2026-10-01 09:00:19.410-04:00", "start": "2026-10-01 09:00:16.430-04:00", "end": "2026-10-01 09:00:19.300-04:00", "duration_s": 2.87, "elapsed_s": 4.085, "speaker": "reachy", "speaker_id": "reachy", "speaker_name": "Reachy", "text": "Just looking around! Want to see a dance?"}
+{"session_id": "9f2c…", "type": "speaker_summary", "time": "2026-10-01 11:45:03.001-04:00", "elapsed_s": 9890.656, "speaker_id": "P01", "speaker": "person", "speaker_name": "Alice", "utterances": 1, "speech_s": 2.769}
+{"session_id": "9f2c…", "type": "speaker_summary", "time": "2026-10-01 11:45:03.001-04:00", "elapsed_s": 9890.656, "speaker_id": "reachy", "speaker": "reachy", "speaker_name": "Reachy", "utterances": 1, "speech_s": 2.87}
 {"session_id": "9f2c…", "type": "session_end", "time": "2026-10-01 11:45:03.002-04:00", "elapsed_s": 9890.657, "utterances": 2}
 ```
 
@@ -50,12 +52,23 @@ Utterance fields:
 | `elapsed_s` | Seconds from app start to the start of the utterance. This value comes from a clock that never jumps, so it stays correct even when the robot's wall clock is wrong (see [Clock](#clock)). |
 | `speaker` | `person` or `reachy`. |
 | `speaker_id` | `reachy`, an enrolled ID such as `P01`, an automatic label such as `V003`, or `unknown`. |
+| `speaker_name` | The name entered for this voice when it was enrolled, renamed, or linked (`Reachy` for Reachy). Empty for voices without a name, such as new automatic voices. A later rename does not change names already logged. |
 | `match_score` | Cosine similarity between this utterance's voiceprint and the closest known voice, from -1 to 1. Higher means more similar. For a new voice, it is the score of the closest *other* voice, which is why it is low. |
 | `id_status` | How the speaker ID was decided; see [Voice identification](#voice-identification). |
 | `overlaps_reachy` | `true` when the person started talking while Reachy was still speaking. |
 | `interrupted` | On a Reachy utterance: `true` when a person talked over it. Its `end` is then the moment the person started. |
 | `audio_file` | The utterance's audio clip, relative to the data folder. |
 | `text` | What was said, as transcribed by the speech server. |
+
+Speaker summary fields (one record per `speaker_id`, in order of each speaker's first utterance):
+
+| Field | Meaning |
+|---|---|
+| `speaker_id`, `speaker`, `speaker_name` | As in utterances. `speaker_name` is the latest name logged for that ID in the run. All unidentified utterances share the ID `unknown`. |
+| `utterances` | Number of utterances by this speaker in the run. |
+| `speech_s` | Sum of their utterances' `duration_s`, in seconds. |
+
+The summary is written only when the app stops normally. If the robot loses power, it is missing, and the same numbers can be recomputed from the utterance records.
 
 How the times are measured:
 
@@ -66,7 +79,7 @@ Only final transcripts are logged; partial, in-progress text is not. The person 
 
 ### The CSV timeline
 
-The CSV file has one row per record and opens directly in Excel. Its columns are `seq`, `start`, `end`, `duration_s`, `elapsed` (as H:MM:SS.s), `kind` (`utterance` or `event`), `speaker`, `speaker_id`, `match_score`, `id_status`, `flags` (`interrupted`, `overlaps_reachy`), `text`, and `audio_file`. For events, `text` holds the event name and its details.
+The CSV file has one row per record and opens directly in Excel. Its columns are `seq`, `start`, `end`, `duration_s`, `elapsed` (as H:MM:SS.s), `kind` (`utterance`, `event`, or `summary`), `speaker`, `speaker_id`, `speaker_name`, `match_score`, `id_status`, `flags` (`interrupted`, `overlaps_reachy`), `text`, and `audio_file`. For events, `text` holds the event name and its details. For a `summary` row, `duration_s` is the speaker's total speech in seconds and `text` reads, for example, `12 utterances, 0:01:34.2 of speech`.
 
 ### Events
 

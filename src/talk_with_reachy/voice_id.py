@@ -497,6 +497,15 @@ class VoiceIdentifier:
 
     # ── What Reachy is told ───────────────────────────────────────
 
+    def name_of(self, speaker_id: str) -> str:
+        """Name entered for this voice at enrollment, rename, or link; empty if none."""
+        voice = self.library.voices.get(speaker_id)
+        if voice is not None and voice.name:
+            return voice.name
+        if self._enrolling(speaker_id) and self._enrollment is not None:
+            return self._enrollment.name
+        return ""
+
     def identity_note(self, speaker_id: str) -> str | None:
         """System note telling the model who is speaking and what it remembers about them."""
         voice = self.library.voices.get(speaker_id)

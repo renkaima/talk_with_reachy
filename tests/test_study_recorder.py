@@ -228,3 +228,21 @@ def test_identification_runs_off_the_event_loop(study_dir: Path, ident: voice_id
     wait_for_writes()
     assert embedder.calls == 1
     np.testing.assert_array_equal(ident.library.voices["V001"].embedding, embedder.vectors[A])
+
+
+def test_log_names_enrolled_people_and_reachy(study_dir: Path, ident: voice_id.VoiceIdentifier) -> None:
+    """The name entered for an enrolled voice is logged with each of its utterances; new voices have none."""
+    ident.library.register("P01", np.array(basis(0), dtype=np.float32), "Alice")
+    study_log.start()
+    recorder = StudyRecorder()
+    recorder.connection_opened()
+    _person_turn(recorder, "item1", A, 2.0, "Hi, it's Alice")
+    recorder.response_created()
+    recorder.assistant_audio(SR, SR)
+    recorder.assistant_transcript("Hi Alice!")
+    recorder.response_done()
+    _person_turn(recorder, "item2", B, 2.0, "I'm new here")
+    study_log.stop()
+
+    names = [(u["speaker_id"], u["speaker_name"]) for u in _utterances(study_dir)]
+    assert names == [("P01", "Alice"), ("reachy", "Reachy"), ("V001", "")]

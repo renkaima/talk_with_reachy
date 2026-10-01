@@ -179,6 +179,7 @@ class StudyRecorder:
             assignment = ident.assign(clip.samples, clip.sample_rate)
         fields: dict[str, Any] = {
             "speaker_id": assignment.speaker_id,
+            "speaker_name": ident.name_of(assignment.speaker_id) if ident is not None else "",
             "match_score": assignment.match_score,
             "id_status": assignment.status,
         }
@@ -280,7 +281,7 @@ class StudyRecorder:
         if session is None or turn.text is None:
             return
         end_mono = turn.playback_end_mono
-        fields: dict[str, Any] = {"speaker_id": "reachy"}
+        fields: dict[str, Any] = {"speaker_id": "reachy", "speaker_name": "Reachy"}
         if turn.interrupted_mono is not None and turn.interrupted_mono < end_mono:
             end_mono = turn.interrupted_mono
             fields["interrupted"] = True
