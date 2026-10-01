@@ -16,6 +16,7 @@ IGNORE = [
     ".venv/*",
     "deploy/.deploy-venv/*",
     "deploy/.onedrive-venv/*",
+    "deploy/.google-venv/*",
     "*/__pycache__/*",
     "__pycache__/*",
     "*.pyc",

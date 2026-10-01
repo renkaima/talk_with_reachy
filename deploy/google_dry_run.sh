@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Check the OneDrive upload end to end on this Mac, without a robot.
+# Check the Google Drive upload end to end on this Mac, without a robot.
 #
-#   bash ~/ReachyMini/talk_with_reachy/deploy/onedrive_dry_run.sh
+#   bash ~/ReachyMini/talk_with_reachy/deploy/google_dry_run.sh
 #
-# Opens a browser for your UC sign-in, then logs and uploads a two-line test
-# conversation with the app's own code. Nothing is installed system-wide.
+# Shows a code to enter at google.com/device, then logs and uploads a two-line
+# test conversation with the app's own code. Nothing is installed system-wide.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-VENV="$REPO_DIR/deploy/.onedrive-venv"
-REQS=(msal "httpx>=0.28" numpy)
+VENV="$REPO_DIR/deploy/.google-venv"
+REQS=("httpx>=0.28" numpy)
 
 if [ ! -x "$VENV/bin/python" ]; then
   echo "Setting up sign-in tools (one time) ..."
@@ -37,4 +37,4 @@ else
   "$VENV/bin/pip" install -q "${REQS[@]}"
 fi
 
-"$VENV/bin/python" "$REPO_DIR/deploy/onedrive_dry_run.py"
+"$VENV/bin/python" "$REPO_DIR/deploy/google_dry_run.py"

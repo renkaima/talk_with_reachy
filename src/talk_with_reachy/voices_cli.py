@@ -30,7 +30,7 @@ from talk_with_reachy.voice_files import (
 WAIT_FOR_APP_S = 6.0
 
 
-def _queue(data_dir: Path, request: dict[str, Any], wait_s: float = WAIT_FOR_APP_S) -> int:
+def _queue(data_dir: Path, request: dict[str, Any]) -> int:
     folder = requests_dir(data_dir)
     folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
@@ -39,7 +39,7 @@ def _queue(data_dir: Path, request: dict[str, Any], wait_s: float = WAIT_FOR_APP
     tmp.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
     tmp.replace(path)
 
-    deadline = time.monotonic() + wait_s
+    deadline = time.monotonic() + WAIT_FOR_APP_S
     while time.monotonic() < deadline:
         if not path.exists():
             print(_last_result(data_dir) or "Done.")

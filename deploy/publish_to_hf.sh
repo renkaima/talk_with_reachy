@@ -14,10 +14,9 @@ VENV="$REPO_DIR/deploy/.deploy-venv"
 SPACE_NAME="${SPACE_NAME:-talk_with_reachy}"
 HUB_REQ='huggingface_hub>=1.17,<2'
 
-if ! grep -Eq '^CLIENT_ID = "[0-9a-fA-F-]{36}"' "$REPO_DIR/src/talk_with_reachy/onedrive_upload.py"; then
-  echo "CLIENT_ID in src/talk_with_reachy/onedrive_upload.py is not filled in yet."
-  echo "Finish the Microsoft app registration first."
-  exit 1
+if ! grep -Eq '^CLIENT_ID = ".+\.apps\.googleusercontent\.com"' "$REPO_DIR/src/talk_with_reachy/google_drive_upload.py"; then
+  echo "Note: CLIENT_ID in src/talk_with_reachy/google_drive_upload.py is empty, so this version"
+  echo "keeps study files on the robot only (no Google Drive upload). Publishing anyway."
 fi
 
 if [ ! -x "$VENV/bin/hf" ]; then

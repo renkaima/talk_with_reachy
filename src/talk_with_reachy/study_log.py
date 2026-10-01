@@ -17,7 +17,7 @@ function here catches and logs its own errors.
 Files live outside the installed package (``~/talk_with_reachy_data`` by
 default) so that app updates never touch them. When a OneDrive client ID is
 configured, a background uploader copies the data folder to the signed-in
-account's OneDrive app folder (see ``onedrive_upload``).
+account's Google Drive (see ``cloud_upload`` and ``google_drive_upload``).
 """
 
 from __future__ import annotations
@@ -368,9 +368,9 @@ def start() -> None:
         logger.exception("Could not start voice identification; utterances will be logged without speaker IDs")
 
     try:
-        from talk_with_reachy.onedrive_upload import OneDriveUploader
+        from talk_with_reachy.cloud_upload import uploader_from_env
 
-        uploader = OneDriveUploader.from_env(data_dir)
+        uploader = uploader_from_env(data_dir)
         if uploader is None:
             return
         _uploader_stop = threading.Event()
@@ -378,11 +378,11 @@ def start() -> None:
             target=uploader.run_until,
             args=(_uploader_stop,),
             daemon=True,
-            name="onedrive-uploader",
+            name="cloud-uploader",
         )
         _uploader_thread.start()
     except Exception:
-        logger.exception("Could not start the OneDrive uploader; study files stay on the robot")
+        logger.exception("Could not start the cloud uploader; study files stay on the robot")
 
 
 def stop(upload_timeout_s: float = 8.0) -> None:

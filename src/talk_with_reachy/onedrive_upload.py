@@ -1,17 +1,15 @@
 """Upload study files to OneDrive through Microsoft Graph.
 
-The robot signs in once as a UC account and keeps the resulting token cache
-in ``~/.config/talk_with_reachy/``. The token only carries the delegated
+Not used at UC: UC's Office of Information Security declined the "Talk with
+Reachy" app registration on 2026-10-01, so ``CLIENT_ID`` is empty and the app
+uploads to Google Drive instead (see ``google_drive_upload``). The code stays
+for an institution that approves the registration.
+
+The robot signs in once and keeps the resulting token cache in
+``~/.config/talk_with_reachy/``. The token only carries the delegated
 permission ``Files.ReadWrite.AppFolder``, so whoever holds it can reach
 ``OneDrive/Apps/<app registration name>/`` and nothing else in that account.
-
-Everything under the data folder's ``transcripts/``, ``audio/`` and ``people/``
-folders is mirrored to the same relative path in the app folder. The speaker
-model (``models/``), the upload bookkeeping file, and hidden temp files are not.
-
-Uploads are whole-file PUTs. Graph replaces an existing file on PUT, so a
-file that is still growing is simply re-uploaded until the run ends.
-Files that fail to upload stay on the robot and are retried on the next pass.
+Uploads are whole-file PUTs; Graph replaces an existing file on PUT.
 
 Run ``talk-with-reachy-onedrive-login`` on the robot (over SSH) to sign in.
 """
@@ -19,41 +17,40 @@ Run ``talk-with-reachy-onedrive-login`` on the robot (over SSH) to sign in.
 from __future__ import annotations
 import os
 import sys
-import json
 import socket
 import logging
 import argparse
-import mimetypes
-import threading
 from typing import Any
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import quote
-from collections.abc import Callable
 
 import httpx
 
-from talk_with_reachy import study_log
-from talk_with_reachy.study_log import FILE_LOCK, DATA_DIR_ENV, DEFAULT_DATA_DIR, transcripts_dir
+from talk_with_reachy.study_log import DATA_DIR_ENV, DEFAULT_DATA_DIR, transcripts_dir
+from talk_with_reachy.cloud_upload import (
+    CONFIG_DIR,
+    INTERVAL_ENV,  # noqa: F401  (re-exported for older imports)
+    UPLOADED_FOLDERS,  # noqa: F401
+    DEFAULT_INTERVAL_S,  # noqa: F401
+    StudyUploader,
+    interval_from_env,
+)
 
 
 logger = logging.getLogger(__name__)
 
-# Fill these in from the lab's Microsoft Entra app registration before publishing the app.
-# Neither value is a secret. Environment variables with the names below override them.
-CLIENT_ID = "07a0d38d-c5ed-48e4-ba3f-da9423fdeb12"  # "Talk with Reachy" app registration, UC tenant
+# From a Microsoft Entra app registration. Neither value is a secret. Environment
+# variables with the names below override them. Empty: OneDrive upload is off.
+CLIENT_ID = ""  # UC declined the "Talk with Reachy" registration (07a0d38d-…) on 2026-10-01
 TENANT = "f5222e6c-5fc6-48eb-8f03-73db18203b63"  # University of Cincinnati
 CLIENT_ID_ENV = "TALK_WITH_REACHY_ONEDRIVE_CLIENT_ID"
 TENANT_ENV = "TALK_WITH_REACHY_ONEDRIVE_TENANT"
-INTERVAL_ENV = "TALK_WITH_REACHY_UPLOAD_INTERVAL_S"
-DEFAULT_INTERVAL_S = 300.0
 
 SCOPES = ["Files.ReadWrite.AppFolder"]
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
-# Uploaded in this order, so transcripts reach OneDrive before the bulkier audio.
-UPLOADED_FOLDERS = ("transcripts", "people", "audio")
 STATE_FILENAME = "upload_state.json"
-TOKEN_CACHE_PATH = Path.home() / ".config" / "talk_with_reachy" / "onedrive_token_cache.json"
+TOKEN_CACHE_PATH = CONFIG_DIR / "onedrive_token_cache.json"
 
 
 def upload_url(remote_path: str) -> str:
@@ -150,138 +147,29 @@ class TokenProvider:
         return str(result["access_token"])
 
 
-class OneDriveUploader:
-    """Copies new or changed transcript files to OneDrive on a fixed interval."""
+class OneDriveUploader(StudyUploader):
+    """Mirrors the study data folder into the OneDrive app folder."""
 
-    def __init__(
-        self,
-        data_dir: Path,
-        get_token: Callable[[], str | None],
-        interval_s: float = DEFAULT_INTERVAL_S,
-        client: httpx.Client | None = None,
-    ) -> None:
-        """Remember where study files live and which files were already uploaded."""
-        self._data_dir = data_dir
-        self._state_path = data_dir / STATE_FILENAME
-        self._get_token = get_token
-        self._interval_s = interval_s
-        self._client = client or httpx.Client(timeout=30.0)
-        self._state = self._load_state()
-        self._warned_signed_out = False
-        self._failing = False
+    TARGET = "OneDrive"
+    LOGIN_COMMAND = "talk-with-reachy-onedrive-login"
+    STATE_FILENAME = STATE_FILENAME
 
     @classmethod
     def from_env(cls, data_dir: Path) -> OneDriveUploader | None:
         """Build an uploader from settings, or return None when no client ID is configured."""
         client_id, tenant = _client_settings()
         if not client_id:
-            logger.info("OneDrive upload is not configured; transcripts stay in %s", transcripts_dir(data_dir))
             return None
-        interval_s = float(os.getenv(INTERVAL_ENV) or DEFAULT_INTERVAL_S)
-        return cls(data_dir, TokenProvider(client_id, tenant).silent, interval_s)
+        return cls(data_dir, TokenProvider(client_id, tenant).silent, interval_from_env())
 
-    def _load_state(self) -> dict[str, list[int]]:
-        try:
-            loaded = json.loads(self._state_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
-        return loaded if isinstance(loaded, dict) else {}
-
-    def _save_state(self) -> None:
-        tmp_path = self._state_path.with_suffix(".tmp")
-        tmp_path.write_text(json.dumps(self._state, indent=2), encoding="utf-8")
-        tmp_path.replace(self._state_path)
-
-    @staticmethod
-    def _fingerprint(path: Path) -> list[int]:
-        stat = path.stat()
-        return [stat.st_size, stat.st_mtime_ns]
-
-    def study_files(self) -> list[tuple[str, Path]]:
-        """Every file to mirror, as (path relative to the data folder, local path)."""
-        files: list[tuple[str, Path]] = []
-        for folder in UPLOADED_FOLDERS:
-            root = self._data_dir / folder
-            if not root.is_dir():
-                continue
-            for path in sorted(root.rglob("*")):
-                relative = path.relative_to(self._data_dir)
-                hidden = any(part.startswith(".") for part in relative.parts)
-                if path.is_file() and not hidden and path.suffix not in (".tmp", ".part"):
-                    files.append((relative.as_posix(), path))
-        return files
-
-    def upload_pending(self) -> int:
-        """Upload every study file that changed since its last successful upload; return how many."""
-        pending = [(rel, p) for rel, p in self.study_files() if self._state.get(rel) != self._fingerprint(p)]
-        if not pending:
-            return 0
-
-        token = self._get_token()
-        if token is None:
-            if not self._warned_signed_out:
-                logger.warning(
-                    "OneDrive: not signed in. Run talk-with-reachy-onedrive-login on the robot. "
-                    "Study files are kept in %s until then.",
-                    self._data_dir,
-                )
-                study_log.record_event("onedrive_signed_out")
-                self._warned_signed_out = True
-            return 0
-        self._warned_signed_out = False
-
-        uploaded = 0
-        failures: list[str] = []
-        for relative, path in pending:
-            with FILE_LOCK:
-                fingerprint = self._fingerprint(path)
-                body = path.read_bytes()
-            content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-            if content_type.startswith("text/") or path.suffix in (".jsonl", ".json"):
-                content_type = "text/plain; charset=utf-8"
-            try:
-                response = self._client.put(
-                    upload_url(relative),
-                    content=body,
-                    headers={"Authorization": f"Bearer {token}", "Content-Type": content_type},
-                )
-                response.raise_for_status()
-            except httpx.HTTPError as e:
-                logger.warning("OneDrive upload failed for %s, will retry: %s", relative, e)
-                failures.append(f"{relative}: {e}")
-                continue
-            self._state[relative] = fingerprint
-            uploaded += 1
-
-        if uploaded:
-            self._save_state()
-            logger.info("Uploaded %d study file(s) to OneDrive", uploaded)
-        self._note_failures(failures)
-        return uploaded
-
-    def _note_failures(self, failures: list[str]) -> None:
-        """Log upload trouble to the study log only when it starts or ends, not on every pass."""
-        if failures and not self._failing:
-            study_log.record_event("onedrive_upload_failing", files=len(failures), first_error=failures[0][:300])
-        elif not failures and self._failing:
-            study_log.record_event("onedrive_upload_recovered")
-        self._failing = bool(failures)
-
-    def run_until(self, stop_event: threading.Event) -> None:
-        """Upload on every interval until ``stop_event`` is set, then make one final pass."""
-        while True:
-            self._safe_upload()
-            if stop_event.wait(self._interval_s):
-                break
-        self._safe_upload()
-
-    def _safe_upload(self) -> None:
-        try:
-            self.upload_pending()
-        except Exception as e:
-            # Usually no network yet; keep the log short because this repeats every pass.
-            logger.warning("OneDrive upload pass failed, will retry: %s: %s", type(e).__name__, e)
-            self._note_failures([f"{type(e).__name__}: {e}"])
+    def _send(self, relative: str, body: bytes, content_type: str, token: str) -> None:
+        """PUT the file to the same path in the app folder; Graph replaces an existing file."""
+        response = self._client.put(
+            upload_url(relative),
+            content=body,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": content_type},
+        )
+        response.raise_for_status()
 
 
 def login_main(argv: list[str] | None = None) -> int:

@@ -50,6 +50,7 @@ dev = [
 [project.scripts]
 talk-with-reachy = "talk_with_reachy.main:main"
 talk-with-reachy-onedrive-login = "talk_with_reachy.onedrive_upload:login_main"
+talk-with-reachy-google-login = "talk_with_reachy.google_drive_upload:login_main"
 talk-with-reachy-voices = "talk_with_reachy.voices_cli:main"
 
 [tool.uv]

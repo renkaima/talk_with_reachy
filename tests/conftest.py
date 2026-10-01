@@ -28,7 +28,7 @@ import pytest  # noqa: E402
 @pytest.fixture
 def study_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Turn study logging on into a temp folder, with voice ID and OneDrive upload off."""
-    from talk_with_reachy import voice_id, study_log, onedrive_upload
+    from talk_with_reachy import voice_id, study_log, onedrive_upload, google_drive_upload
 
     monkeypatch.setenv(study_log.LOGGING_ENABLED_ENV, "1")
     monkeypatch.setenv(study_log.DATA_DIR_ENV, str(tmp_path))
@@ -36,6 +36,8 @@ def study_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[
     monkeypatch.setenv(voice_id.VOICE_ID_ENV, "0")
     monkeypatch.delenv(onedrive_upload.CLIENT_ID_ENV, raising=False)
     monkeypatch.setattr(onedrive_upload, "CLIENT_ID", "")
+    monkeypatch.delenv(google_drive_upload.CLIENT_ID_ENV, raising=False)
+    monkeypatch.setattr(google_drive_upload, "CLIENT_ID", "")
     monkeypatch.setattr(study_log, "clock_synced", lambda: True)
     yield tmp_path
     study_log.stop()
