@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # From the lab's Google Cloud OAuth client (type "TVs and Limited Input devices").
 # Google does not treat an installed app's client secret as confidential.
 # Environment variables with the names below override them. Empty: Google Drive upload is off.
-CLIENT_ID = ""
+CLIENT_ID = "984505342108-dnqjujdrcu94b8s9ctgt2aiqdefh4u0l.apps.googleusercontent.com"  # project talk-with-reachy
 CLIENT_SECRET = ""
 CLIENT_ID_ENV = "TALK_WITH_REACHY_GOOGLE_CLIENT_ID"
 CLIENT_SECRET_ENV = "TALK_WITH_REACHY_GOOGLE_CLIENT_SECRET"
