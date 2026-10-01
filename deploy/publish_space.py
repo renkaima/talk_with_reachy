@@ -10,6 +10,10 @@ from pathlib import Path
 from huggingface_hub import HfApi
 
 
+SECRET_FILE = "deploy/google_client_secret.txt"  # git-ignored; holds only the Google client secret
+MODULE_FILE = "src/talk_with_reachy/google_drive_upload.py"
+SECRET_LINE = 'CLIENT_SECRET = ""'
+
 # Files that are local tooling or caches, not part of the app.
 IGNORE = [
     ".gitattributes",
@@ -29,7 +33,33 @@ IGNORE = [
     "*/*.egg-info/*",
     ".DS_Store",
     "*/.DS_Store",
+    SECRET_FILE,
 ]
+
+
+def upload_client_secret(api: HfApi, repo_id: str, repo_dir: Path) -> None:
+    """Upload google_drive_upload.py again with the Google client secret filled in.
+
+    The secret is not in the public git repository, so the private Space is the
+    only place robots get it from.
+    """
+    secret_path = repo_dir / SECRET_FILE
+    if not secret_path.is_file() or not secret_path.read_text(encoding="utf-8").strip():
+        print(f"Note: {SECRET_FILE} is missing, so robots that install this version cannot sign in to Google Drive.")
+        return
+    secret = secret_path.read_text(encoding="utf-8").strip()
+    source = (repo_dir / MODULE_FILE).read_text(encoding="utf-8")
+    if source.count(SECRET_LINE) != 1:
+        print(f"Warning: could not find the line {SECRET_LINE} in {MODULE_FILE}, so the secret was not added.")
+        return
+    api.upload_file(
+        path_or_fileobj=source.replace(SECRET_LINE, f'CLIENT_SECRET = "{secret}"').encode("utf-8"),
+        path_in_repo=MODULE_FILE,
+        repo_id=repo_id,
+        repo_type="space",
+        commit_message="Add the Google client secret",
+    )
+    print("Added the Google client secret to the Space copy.")
 
 
 def main() -> int:
@@ -53,6 +83,7 @@ def main() -> int:
         ignore_patterns=IGNORE,
         commit_message="Deploy Talk with Reachy",
     )
+    upload_client_secret(api, repo_id, repo_dir)
     print(f"Done: https://huggingface.co/spaces/{repo_id}")
     return 0
 

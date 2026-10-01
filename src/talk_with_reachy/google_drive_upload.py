@@ -36,8 +36,10 @@ from talk_with_reachy.cloud_upload import CONFIG_DIR, StudyUploader, write_priva
 logger = logging.getLogger(__name__)
 
 # From the lab's Google Cloud OAuth client (type "TVs and Limited Input devices").
-# Google does not treat an installed app's client secret as confidential.
-# Environment variables with the names below override them. Empty: Google Drive upload is off.
+# The client secret is kept out of the public git repository: it lives in
+# deploy/google_client_secret.txt (git-ignored), and deploy/publish_space.py writes
+# it into the copy uploaded to the private Space.
+# Environment variables with the names below override both. Empty CLIENT_ID: Google Drive upload is off.
 CLIENT_ID = "984505342108-dnqjujdrcu94b8s9ctgt2aiqdefh4u0l.apps.googleusercontent.com"  # project talk-with-reachy
 CLIENT_SECRET = ""
 CLIENT_ID_ENV = "TALK_WITH_REACHY_GOOGLE_CLIENT_ID"
@@ -351,6 +353,12 @@ def login_main(argv: list[str] | None = None) -> int:
     client_id, client_secret = client_settings()
     if not client_id:
         print(f"No Google client ID configured. Set CLIENT_ID in google_drive_upload.py or {CLIENT_ID_ENV}.")
+        return 2
+    if not client_secret:
+        print(
+            "No Google client secret configured. Install the app from the private Space published with "
+            f"deploy/google_client_secret.txt, or set {CLIENT_SECRET_ENV}."
+        )
         return 2
 
     try:

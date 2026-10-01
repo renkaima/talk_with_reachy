@@ -307,3 +307,14 @@ def test_login_without_client_id_exits_with_error(monkeypatch: pytest.MonkeyPatc
     monkeypatch.delenv(google_drive_upload.CLIENT_ID_ENV, raising=False)
     monkeypatch.setattr(google_drive_upload, "CLIENT_ID", "")
     assert google_drive_upload.login_main([]) == 2
+
+
+def test_login_without_client_secret_exits_before_contacting_google(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A copy installed from the public repository has no secret, so login stops with an explanation."""
+    monkeypatch.setenv(google_drive_upload.CLIENT_ID_ENV, "abc.apps.googleusercontent.com")
+    monkeypatch.delenv(google_drive_upload.CLIENT_SECRET_ENV, raising=False)
+    monkeypatch.setattr(google_drive_upload, "CLIENT_SECRET", "")
+    monkeypatch.setattr(
+        google_drive_upload.GoogleTokenProvider, "sign_in", lambda self: pytest.fail("contacted Google")
+    )
+    assert google_drive_upload.login_main([]) == 2

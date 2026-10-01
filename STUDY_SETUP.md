@@ -177,14 +177,13 @@ The robot needs an OAuth client to sign in to Google. Create it in the Google Cl
 5. Under **Google Auth Platform → Data Access**, click **Add or remove scopes** and add `https://www.googleapis.com/auth/drive.file`. This scope lets the app see and change only the files it creates. Google classifies it as non-sensitive, so the security review that broader Drive scopes require does not apply.
 6. Under **Google Auth Platform → Clients**, click **Create client**, choose the application type **TVs and Limited Input devices**, and name it `Talk with Reachy robot`. Copy the *Client ID* and the *Client secret*.
 
-Then edit `src/talk_with_reachy/google_drive_upload.py`:
+Then put the Client ID in `src/talk_with_reachy/google_drive_upload.py`:
 
 ```python
 CLIENT_ID = "<Client ID>.apps.googleusercontent.com"
-CLIENT_SECRET = "<Client secret>"
 ```
 
-Google does not treat the client secret of an app installed on a device as confidential, and the Space is private.
+Keep the Client secret out of the code, because the GitHub repository is public. Save it as the only line of `deploy/google_client_secret.txt`. Git ignores this file. `deploy/publish_space.py` (step 3) writes the secret into the copy it uploads to the private Space, which is where robots install the app from, and `deploy/google_dry_run.sh` reads it on the Mac.
 
 ### 3. Publish as a private Hugging Face Space
 
@@ -264,7 +263,7 @@ All settings are optional environment variables. You can put them in the app's `
 | `TALK_WITH_REACHY_DATA_DIR` | `~/talk_with_reachy_data` | Where study files are written. |
 | `TALK_WITH_REACHY_ROBOT_ID` | host name | First part of each file name; use it to tell robots apart. |
 | `TALK_WITH_REACHY_GOOGLE_CLIENT_ID` | `CLIENT_ID` in `google_drive_upload.py` | Google OAuth client ID. Google Drive upload is off when neither is set. |
-| `TALK_WITH_REACHY_GOOGLE_CLIENT_SECRET` | `CLIENT_SECRET` in `google_drive_upload.py` | Google OAuth client secret. |
+| `TALK_WITH_REACHY_GOOGLE_CLIENT_SECRET` | `CLIENT_SECRET` in `google_drive_upload.py` (empty in git; filled in the private Space from `deploy/google_client_secret.txt`) | Google OAuth client secret. |
 | `TALK_WITH_REACHY_GOOGLE_FOLDER` | `Talk with Reachy` | Name of the folder in My Drive. |
 | `TALK_WITH_REACHY_ONEDRIVE_CLIENT_ID` | empty | Turns on OneDrive upload instead, where an institution has approved the app registration. Google Drive takes precedence when both are set. |
 | `TALK_WITH_REACHY_ONEDRIVE_TENANT` | `TENANT` in `onedrive_upload.py` | Microsoft tenant for OneDrive. |

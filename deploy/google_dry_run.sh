@@ -37,4 +37,10 @@ else
   "$VENV/bin/pip" install -q "${REQS[@]}"
 fi
 
+SECRET_FILE="$REPO_DIR/deploy/google_client_secret.txt"
+if [ -z "${TALK_WITH_REACHY_GOOGLE_CLIENT_SECRET:-}" ] && [ -s "$SECRET_FILE" ]; then
+  TALK_WITH_REACHY_GOOGLE_CLIENT_SECRET="$(tr -d '[:space:]' < "$SECRET_FILE")"
+  export TALK_WITH_REACHY_GOOGLE_CLIENT_SECRET
+fi
+
 "$VENV/bin/python" "$REPO_DIR/deploy/google_dry_run.py"

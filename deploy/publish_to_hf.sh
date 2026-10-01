@@ -17,6 +17,9 @@ HUB_REQ='huggingface_hub>=1.17,<2'
 if ! grep -Eq '^CLIENT_ID = ".+\.apps\.googleusercontent\.com"' "$REPO_DIR/src/talk_with_reachy/google_drive_upload.py"; then
   echo "Note: CLIENT_ID in src/talk_with_reachy/google_drive_upload.py is empty, so this version"
   echo "keeps study files on the robot only (no Google Drive upload). Publishing anyway."
+elif [ ! -s "$REPO_DIR/deploy/google_client_secret.txt" ]; then
+  echo "Note: deploy/google_client_secret.txt is missing, so robots that install this version"
+  echo "cannot sign in to Google Drive. Publishing anyway."
 fi
 
 if [ ! -x "$VENV/bin/hf" ]; then

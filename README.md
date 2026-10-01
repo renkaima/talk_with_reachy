@@ -14,7 +14,9 @@ tags:
 
 # Reachy Mini conversation app
 
-> **Talk with Reachy fork.** For a research study, this copy logs every utterance with start and end times, identifies speakers by voice, keeps an audio clip of each person utterance, logs robot actions and system events, and uploads everything to Google Drive directly from the robot. Reachy also knows who is speaking and keeps separate memories per person. See [STUDY_SETUP.md](STUDY_SETUP.md) for what it records and how to set it up. The command `reachy-mini-conversation-app` below is `talk-with-reachy` here.
+> **Talk with Reachy fork.** This repository is a modified copy of Pollen Robotics' [reachy_mini_conversation_app](https://github.com/pollen-robotics/reachy_mini_conversation_app) and is distributed under the same Apache 2.0 license. The changes are the commits after upstream commit `5eb39ed` in the git history. This fork is not affiliated with or endorsed by Pollen Robotics; "Reachy Mini" names the robot that the app runs on.
+>
+> For a research study, this copy logs every utterance with start and end times, identifies speakers by voice, keeps an audio clip of each person utterance, logs robot actions and system events, and uploads everything to Google Drive directly from the robot. Reachy also knows who is speaking and keeps separate memories per person. See [STUDY_SETUP.md](STUDY_SETUP.md) for what it records and how to set it up. The command `reachy-mini-conversation-app` below is `talk-with-reachy` here.
 
 Conversational app for the Reachy Mini robot combining realtime voice, vision, personality-aware tools, and choreographed motion.
 
