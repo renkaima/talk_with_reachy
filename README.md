@@ -5,7 +5,7 @@ colorFrom: red
 colorTo: blue
 sdk: static
 pinned: false
-short_description: Conversation app that logs timed, speaker-labeled transcripts
+short_description: Conversation app with timed, speaker-labeled transcripts
 suggested_storage: large
 tags:
  - reachy_mini
