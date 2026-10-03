@@ -7,6 +7,7 @@
   <a href="#a-study-session-step-by-step">A study session</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#what-gets-recorded">What gets recorded</a> ·
+  <a href="#privacy-and-responsibility">Privacy</a> ·
   <a href="#try-it">Try it</a> ·
   <a href="STUDY_SETUP.md">Study setup guide</a>
 </p>
@@ -14,6 +15,9 @@
 **Talk with Reachy** is an app for [Reachy Mini](https://github.com/pollen-robotics/reachy_mini), a small robot by Pollen Robotics. People talk with Reachy by voice, as they do in Pollen's official conversation app. While they talk, the app keeps a research record of the conversation: what was said, when it was said, and who said it, recognized by voice. The app was built for research studies.
 
 A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_reachy_math)**, adds spoken math games for children aged 10 to 13 on top of everything described here.
+
+> [!IMPORTANT]
+> **This app records.** By default it saves what everyone near the robot says, an audio clip of each utterance, and a voiceprint of each voice. Whoever installs it is responsible for telling people and getting their consent; see [Privacy and responsibility](#privacy-and-responsibility).
 
 ## What the app does
 
@@ -88,17 +92,30 @@ One utterance in the transcript looks like this (one line in the file, spread ou
 
 [STUDY_SETUP.md](STUDY_SETUP.md#what-is-recorded) describes every field and event.
 
+## Privacy and responsibility
+
+Talk with Reachy is a research tool, and it records by default. For everyone who speaks near the robot, it saves the words, the times, an audio clip of each utterance, and a voiceprint, which some laws treat as biometric data. These files stay on the device. They leave it only for the Google Drive of the person who signs the robot in to Google; the maintainer of this app never receives them. As in Pollen's app, the microphone audio is also streamed to the speech service on Hugging Face, and with this app the hidden notes also send it people's names and what Reachy remembers about them.
+
+Whoever installs and runs the app chooses to record, and is responsible for:
+
+- telling everyone near the robot that they are being recorded, and getting their consent;
+- following the laws that apply where the robot is used, such as rules on recording conversations and on biometric data;
+- keeping the recordings safe, and deleting a person's data when they ask ([how](STUDY_SETUP.md#managing-voices)).
+
+To record less, set `TALK_WITH_REACHY_SAVE_AUDIO=0` (no audio clips), `TALK_WITH_REACHY_VOICE_ID=0` (no voiceprints), or `TALK_WITH_REACHY_LOGGING=0` (no study records at all); see [Settings](STUDY_SETUP.md#settings). To keep the audio on your own hardware, run your own speech service ([connection modes](docs/ORIGINAL_README.md#hugging-face-connection-modes)).
+
+The app is provided "as is", without warranty of any kind, under the [Apache 2.0 license](LICENSE).
+
 ## Try it
 
 **In the simulation, without a robot.** Start the simulation in the Reachy Mini Control app on a Mac, install Talk with Reachy, and talk through the Mac's microphone. The app writes transcripts, speaker IDs, and audio clips to `~/talk_with_reachy_data` on the Mac. To test the Google Drive upload as well, sign the Mac in once with `bash deploy/google_dry_run.sh` ([details](STUDY_SETUP.md#5-sign-in-to-google-drive-one-time-per-device)).
 
-**On a Reachy Mini.** The installable app is a private Hugging Face Space, because it carries the app's Google sign-in secret. To get access, contact [@renkaima](https://github.com/renkaima). The app then appears in the Control app's store under *Private*. [STUDY_SETUP.md](STUDY_SETUP.md#setup-in-order) lists every setup step, from publishing the Space to enrolling participants.
+**On a Reachy Mini.** Open the app store in the Reachy Mini Control app, search for *Talk with Reachy*, and click **Install**. The app records on the robot from the first conversation. Google Drive upload works only for Google accounts that the maintainer has added as testers, so on other robots the files stay on the device. [STUDY_SETUP.md](STUDY_SETUP.md#setup-in-order) lists every setup step for a study, from enrolling participants to checking the upload.
 
 **From source, for developers.** The [developer reference](docs/ORIGINAL_README.md) covers installing from source, configuration, and command-line options; here the command is `talk-with-reachy`. The Google client secret is not in this repository, so a copy run from source keeps its study files on the device.
 
 ## Good to know
 
-- **Audio leaves the device.** As in Pollen's app, the microphone audio goes to the speech service on Hugging Face. With this app, the hidden notes also send it people's names and what Reachy remembers about them. To keep audio on your own hardware, run your own speech service ([connection modes](docs/ORIGINAL_README.md#hugging-face-connection-modes)).
 - **Check voice ID before relying on it.** The voice-matching thresholds come from a check on clean recordings of six speakers, not on any study population or in a noisy room. Run a pilot in which an observer notes who speaks, and compare the notes with the transcript ([details](STUDY_SETUP.md#voice-identification)).
 - **One label per utterance.** When two people talk in the same turn, the utterance is labeled with the voice that dominates it, or `unknown`.
 - **The Python package is `talk_with_reachy`,** so the app installs next to Pollen's official conversation app on the same robot without replacing it.

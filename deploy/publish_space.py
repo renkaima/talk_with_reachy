@@ -1,9 +1,13 @@
-"""Create the private Hugging Face Space for Talk with Reachy and upload this repository to it.
+"""Create the Hugging Face Space for Talk with Reachy, upload this repository to it, and make it public.
+
+A public Space is a community app: anyone can install it from the Reachy Mini Control store.
+Run with SPACE_PRIVATE=1 to keep the Space private instead.
 
 Called by publish_to_hf.sh after you have signed in with `hf auth login`.
 Usage: python publish_space.py <repo-dir> <space-name>
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -43,8 +47,9 @@ IGNORE = [
 def upload_client_secret(api: HfApi, repo_id: str, repo_dir: Path) -> None:
     """Upload google_drive_upload.py again with the Google client secret filled in.
 
-    The secret is not in the public git repository, so the private Space is the
-    only place robots get it from.
+    The secret is not in the public git repository, so the Space is the only place
+    robots get it from. Google does not treat the client secret of an installed app
+    as confidential, and while the Google app is in Testing only its test users can sign in.
     """
     secret_path = repo_dir / SECRET_FILE
     if not secret_path.is_file() or not secret_path.read_text(encoding="utf-8").strip():
@@ -88,19 +93,17 @@ def upload_readme(api: HfApi, repo_id: str, repo_dir: Path) -> None:
 
 
 def main() -> int:
-    """Create the Space if needed, refuse to publish into a public one, then upload."""
+    """Create the Space if needed, upload the app, set its visibility, and check its tag."""
     repo_dir, space_name = Path(sys.argv[1]).resolve(), sys.argv[2]
+    private = os.getenv("SPACE_PRIVATE", "0").strip() == "1"
     api = HfApi()
     user = api.whoami()["name"]
     repo_id = f"{user}/{space_name}"
 
+    # A new Space starts private, so nothing is public before its README with the privacy notice is in place.
     api.create_repo(repo_id, repo_type="space", space_sdk="static", private=True, exist_ok=True)
-    if not api.space_info(repo_id).private:
-        print(f"Stopped: https://huggingface.co/spaces/{repo_id} already exists and is public.")
-        print("Make it private in the Space settings, or run again with SPACE_NAME=<another name>.")
-        return 1
 
-    print(f"Uploading to private Space {repo_id} ...")
+    print(f"Uploading to Space {repo_id} ...")
     api.upload_folder(
         repo_id=repo_id,
         repo_type="space",
@@ -110,6 +113,12 @@ def main() -> int:
     )
     upload_readme(api, repo_id, repo_dir)
     upload_client_secret(api, repo_id, repo_dir)
+    if api.space_info(repo_id).private != private:
+        api.update_repo_settings(repo_id, repo_type="space", private=private)
+    if private:
+        print("The Space is private: only Hugging Face accounts with access to it can install the app.")
+    else:
+        print("The Space is public: anyone can install the app from the Reachy Mini Control store.")
     if APP_TAG not in (api.space_info(repo_id).tags or []):
         print(f"Warning: the Space has no {APP_TAG} tag, so the Control App will not list it. Tell Claude.")
         return 1

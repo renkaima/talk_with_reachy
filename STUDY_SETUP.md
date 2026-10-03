@@ -196,9 +196,9 @@ Then put the Client ID in `src/talk_with_reachy/google_drive_upload.py`:
 CLIENT_ID = "<Client ID>.apps.googleusercontent.com"
 ```
 
-Keep the Client secret out of the code, because the GitHub repository is public. Save it as the only line of `deploy/google_client_secret.txt`. Git ignores this file. `deploy/publish_space.py` (step 3) writes the secret into the copy it uploads to the private Space, which is where robots install the app from, and `deploy/google_dry_run.sh` reads it on the Mac.
+Keep the Client secret out of the code, because the GitHub repository is public. Save it as the only line of `deploy/google_client_secret.txt`. Git ignores this file. `deploy/publish_space.py` (step 3) writes the secret into the copy it uploads to the Space, which is where robots install the app from, and `deploy/google_dry_run.sh` reads it on the Mac.
 
-### 3. Publish as a private Hugging Face Space
+### 3. Publish the Hugging Face Space
 
 The easy way is one command in Terminal on a Mac:
 
@@ -206,9 +206,11 @@ The easy way is one command in Terminal on a Mac:
 bash deploy/publish_to_hf.sh
 ```
 
-It sets up the Hugging Face tools inside `deploy/.deploy-venv` (nothing is installed system-wide), opens your browser to sign in to Hugging Face if needed, creates the private Space `<your-account>/talk_with_reachy`, and uploads the app. It stops if a Space with that name already exists and is public. Run it again after any code change to update the Space.
+It sets up the Hugging Face tools inside `deploy/.deploy-venv` (nothing is installed system-wide), opens your browser to sign in to Hugging Face if needed, creates the Space `<your-account>/talk_with_reachy` if it does not exist yet, uploads the app, and makes the Space public, so that anyone can install the app from the Control App store as a community app. Run it again after any code change to update the Space. To keep a private copy instead, run it as `SPACE_PRIVATE=1 bash deploy/publish_to_hf.sh`; only Hugging Face accounts with access to it can then install it.
 
-To do it by hand instead, create a new Space with SDK **Static** and visibility **Private**, then push this repository to it:
+Because the Space is public, the Google client secret written into it is public too. Google does not treat the client secret of an installed app as confidential, and while the Google app is in *Testing* status, only the Google accounts added as its test users can sign in.
+
+To do it by hand instead, create a new Space with SDK **Static** and visibility **Public** (or **Private** for a private copy), then push this repository to it:
 
 ```bash
 git lfs install                      # the avatars and images are stored with Git LFS
@@ -222,7 +224,7 @@ The two GitHub workflows that sync to Hugging Face (`sync-hf-space.yml`, `pr-hf-
 
 ### 4. Install on the robot
 
-In Reachy Mini Control, sign in to Hugging Face with an account that can see the private Space. Open the app store and search for *Talk with Reachy*. The app appears with a **Private** badge; the store also has a *Private* filter. Install it like any other app. After publishing a new version, update or reinstall it the same way.
+In Reachy Mini Control, open the app store, search for *Talk with Reachy*, and install it like any other app. After a new version is published, the store offers an update. A private copy appears only when Reachy Mini Control is signed in to a Hugging Face account that can see it, with a **Private** badge; the store also has a *Private* filter.
 
 ### 5. Sign in to Google Drive (one time per device)
 
@@ -276,7 +278,7 @@ All settings are optional environment variables. You can put them in the app's `
 | `TALK_WITH_REACHY_DATA_DIR` | `~/talk_with_reachy_data` | Where study files are written. |
 | `TALK_WITH_REACHY_ROBOT_ID` | host name | First part of each file name; use it to tell robots apart. |
 | `TALK_WITH_REACHY_GOOGLE_CLIENT_ID` | `CLIENT_ID` in `google_drive_upload.py` | Google OAuth client ID. Google Drive upload is off when neither is set. |
-| `TALK_WITH_REACHY_GOOGLE_CLIENT_SECRET` | `CLIENT_SECRET` in `google_drive_upload.py` (empty in git; filled in the private Space from `deploy/google_client_secret.txt`) | Google OAuth client secret. |
+| `TALK_WITH_REACHY_GOOGLE_CLIENT_SECRET` | `CLIENT_SECRET` in `google_drive_upload.py` (empty in git; filled in the published Space from `deploy/google_client_secret.txt`) | Google OAuth client secret. |
 | `TALK_WITH_REACHY_GOOGLE_FOLDER` | `Talk with Reachy` | Name of the folder in My Drive. |
 | `TALK_WITH_REACHY_ONEDRIVE_CLIENT_ID` | empty | Turns on OneDrive upload instead, where an institution has approved the app registration. Google Drive takes precedence when both are set. |
 | `TALK_WITH_REACHY_ONEDRIVE_TENANT` | `TENANT` in `onedrive_upload.py` | Microsoft tenant for OneDrive. |
@@ -300,7 +302,7 @@ All settings are optional environment variables. You can put them in the app's `
 | `src/talk_with_reachy/console.py` | Logs microphone mute changes. |
 | `src/talk_with_reachy/main.py` | Starts and stops study logging around the conversation. |
 | `tests/test_study_*.py`, `tests/test_voice_id.py`, `tests/test_audio_timeline.py`, `tests/test_google_drive_upload.py`, `tests/test_onedrive_upload.py` | New tests. Google, Microsoft Graph, and the speaker model are replaced by fakes. |
-| `README.md`, `docs/readme/`, `docs/ORIGINAL_README.md`, `deploy/space_header.yml`, `deploy/publish_space.py`, `deploy/publish_to_hf.sh` | Rewritten README with pictures. Pollen's README is kept as `docs/ORIGINAL_README.md`. The Hugging Face Space settings moved from the top of `README.md` to `deploy/space_header.yml`, and `publish_space.py` adds them back when it publishes the private Space. |
+| `README.md`, `docs/readme/`, `docs/ORIGINAL_README.md`, `deploy/space_header.yml`, `deploy/publish_space.py`, `deploy/publish_to_hf.sh` | Rewritten README with pictures. Pollen's README is kept as `docs/ORIGINAL_README.md`. The Hugging Face Space settings moved from the top of `README.md` to `deploy/space_header.yml`, and `publish_space.py` adds them back when it publishes the Space, which it makes public. |
 | Everything else | Package rename only (`reachy_mini_conversation_app` → `talk_with_reachy`). |
 
 In the developer reference, [docs/ORIGINAL_README.md](docs/ORIGINAL_README.md), the command `reachy-mini-conversation-app` is `talk-with-reachy` in this fork.

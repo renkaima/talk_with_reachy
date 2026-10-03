@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Publish Talk with Reachy as a private Hugging Face Space.
+# Publish Talk with Reachy as a public Hugging Face Space (a community app in the Reachy Mini Control store).
 #
 #   bash ~/ReachyMini/talk_with_reachy/deploy/publish_to_hf.sh
 #
 # Installs the Hugging Face tools into deploy/.deploy-venv (nothing system-wide),
 # signs you in to Hugging Face through your browser if needed, creates the
-# private Space <your-account>/talk_with_reachy, and uploads the app.
+# Space <your-account>/talk_with_reachy, uploads the app, and makes the Space public
+# (run with SPACE_PRIVATE=1 to keep it private).
 # Safe to run again: it updates the same Space.
 set -euo pipefail
 
