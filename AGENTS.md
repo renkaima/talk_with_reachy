@@ -74,8 +74,8 @@ These are the cleanups we make in review over and over. Write code that wouldn't
 ## Documentation
 
 - **One README, one source of truth.** Never create another `README.md`. Update the existing root `README.md`.
-- **Keep the README in sync.** If your change touches anything it documents (CLI flags, config vars, tools, install steps, behavior), update `README.md` in the same PR.
-- **Flag when the architecture diagram needs updating.** If your change alters the architecture, call it out in the PR. The diagram is generated: `docs/scheme.mmd` is the Mermaid source and `README.md` embeds the rendered `docs/assets/conversation_app_arch.svg`. It can only be updated by editing `scheme.mmd` and regenerating the SVG, so flag the need rather than hand-editing the SVG.
+- **Keep the README in sync.** If your change touches anything it documents (CLI flags, config vars, tools, install steps, behavior), update `README.md` or the developer reference `docs/ORIGINAL_README.md` in the same PR.
+- **Flag when the architecture diagram needs updating.** If your change alters the architecture, call it out in the PR. The diagram is generated: `docs/scheme.mmd` is the Mermaid source and `docs/ORIGINAL_README.md` embeds the rendered `docs/assets/conversation_app_arch.svg`. It can only be updated by editing `scheme.mmd` and regenerating the SVG, so flag the need rather than hand-editing the SVG.
 - **Don't add Markdown files under `docs/`.** Extra docs in this repo go stale fast. If a feature genuinely needs its own document, it belongs in the [`reachy_mini` docs folder](https://github.com/pollen-robotics/reachy_mini/tree/main/docs), which syncs to the docs website. Flag the need and suggest a separate PR to `reachy_mini`, and only when a standalone document is truly necessary.
 
 ---
@@ -104,14 +104,14 @@ profiles/                 # bundled personalities (one dir per profile)
 tests/                    # pytest suite, mirrors the src layout
 ```
 
-Architecture overview: [`README.md`](README.md#architecture).
+Architecture overview: [`docs/ORIGINAL_README.md`](docs/ORIGINAL_README.md#architecture).
 
 - **Adding a tool:** subclass `Tool` from `tools/core_tools.py` in its own file under `tools/`. Define `name`, `description`, `parameters_schema`, and an async `__call__(self, deps: ToolDependencies, **kwargs)` returning a `dict`. Return `{"error": ...}` on failure instead of raising into the loop. Copy an existing tool such as `tools/move_head.py`.
 - **Adding a personality:** add a directory under `profiles/`, following an existing one (e.g. `profiles/default/`).
 
 ## Commands
 
-Set up the environment per the [README installation guide](README.md#installation). With the venv active, run the tools directly. Run the full gate before handing work back. CI runs the same checks on Linux, macOS, and Windows:
+Set up the environment per the [installation guide](docs/ORIGINAL_README.md#installation). With the venv active, run the tools directly. Run the full gate before handing work back. CI runs the same checks on Linux, macOS, and Windows:
 
 ```bash
 ruff check . --fix && ruff format . && mypy --pretty --show-error-codes && pytest tests/ -v

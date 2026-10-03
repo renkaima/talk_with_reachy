@@ -39,3 +39,7 @@
 *.vis lfs
 *.db lfs
 *.ply lfs
+
+# README pictures are hand-written SVG text; keep them out of Git LFS so they diff as text
+# and need no LFS upload.
+docs/readme/*.svg !filter !diff !merge text

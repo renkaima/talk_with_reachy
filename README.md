@@ -1,415 +1,111 @@
----
-title: Talk with Reachy
-emoji: 🎤
-colorFrom: red
-colorTo: blue
-sdk: static
-pinned: false
-short_description: Conversation app with timed, speaker-labeled transcripts
-suggested_storage: large
-tags:
- - reachy_mini
- - reachy_mini_python_app
----
-
-# Reachy Mini conversation app
-
-> **Talk with Reachy fork.** This repository is a modified copy of Pollen Robotics' [reachy_mini_conversation_app](https://github.com/pollen-robotics/reachy_mini_conversation_app) and is distributed under the same Apache 2.0 license. The changes are the commits after upstream commit `5eb39ed` in the git history. This fork is not affiliated with or endorsed by Pollen Robotics; "Reachy Mini" names the robot that the app runs on.
->
-> For a research study, this copy logs every utterance with start and end times, identifies speakers by voice, keeps an audio clip of each person utterance, logs robot actions and system events, and uploads everything to Google Drive directly from the robot. Reachy also knows who is speaking and keeps separate memories per person. See [STUDY_SETUP.md](STUDY_SETUP.md) for what it records and how to set it up. The command `reachy-mini-conversation-app` below is `talk-with-reachy` here.
-
-Conversational app for the Reachy Mini robot combining realtime voice, vision, personality-aware tools, and choreographed motion.
-
-![Reachy Mini Dance](docs/assets/reachy_mini_dance.gif)
-
-## Table of contents
-
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Running the app](#running-the-app)
-- [LLM tools](#llm-tools-exposed-to-the-assistant)
-- [Creating and adding tools](#creating-and-adding-tools)
-- [Advanced features](#advanced-features)
-- [Contributing](#contributing)
-- [License](#license)
-
-## Overview
-
-- Low-latency audio conversation through the Hugging Face realtime backend, using the built-in server or a local endpoint.
-- Vision is handled by the realtime backend when the `camera` tool is used.
-- Layered motion system queues primary moves (dances, emotions, goto poses, breathing) while blending speech-reactive wobble.
-- Async tools integrate motion, camera capture, and MCP Tool Spaces. The optional web UI (`--ui`) manages conversations, personalities, tools, and settings.
-
-## Architecture
-
-The app connects the user, AI services, and robot hardware:
-
 <p align="center">
-  <img src="docs/assets/conversation_app_arch.svg" alt="Architecture Diagram" width="600"/>
+  <img src="docs/readme/banner.svg" alt="Talk with Reachy: voice conversations with Reachy Mini, recorded for research" width="100%">
 </p>
 
-## Installation
+<p align="center">
+  <a href="#what-the-app-does">What it does</a> ·
+  <a href="#a-study-session-step-by-step">A study session</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#what-gets-recorded">What gets recorded</a> ·
+  <a href="#try-it">Try it</a> ·
+  <a href="STUDY_SETUP.md">Study setup guide</a>
+</p>
 
-> [!IMPORTANT]
-> Install [Reachy Mini's SDK](https://github.com/pollen-robotics/reachy_mini/) before using this app.<br>
-> Windows support is currently experimental and has not been extensively tested. Use with caution.
+**Talk with Reachy** is an app for [Reachy Mini](https://github.com/pollen-robotics/reachy_mini), a small robot by Pollen Robotics. People talk with Reachy by voice, as they do in Pollen's official conversation app. While they talk, the app keeps a research record of the conversation: what was said, when it was said, and who said it, recognized by voice. The app was built for research studies.
 
-<details open>
-<summary>Using uv (recommended)</summary>
+A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_reachy_math)**, adds spoken math games for children aged 10 to 13 on top of everything described here.
 
-Set up with [uv](https://docs.astral.sh/uv/):
+## What the app does
 
-```bash
-# macOS (Homebrew)
-uv venv --python /opt/homebrew/bin/python3.12 .venv
+**For the people who talk with Reachy**
 
-# Linux / Windows (Python in PATH)
-uv venv --python python3.12 .venv
+- They talk naturally, and Reachy answers aloud in one or two sentences.
+- Reachy moves its head, shows emotions, and can dance, look through its camera, or check the weather.
+- Reachy recognizes who is speaking, uses their name, and remembers things about each person separately. It is instructed never to tell one person what it remembers about another.
 
-source .venv/bin/activate
-uv sync
+**For the researcher**
+
+- Every utterance, by a person or by Reachy, is logged with its start time, end time, and duration.
+- Each person utterance is labeled with a speaker ID found by voice: `P01` for a participant the researcher enrolled, or `V003` for a voice the app learned on its own.
+- The audio of each person utterance is saved as a WAV clip, so a researcher can check the speaker labels by ear.
+- Robot actions, people talking over Reachy, and connection problems are logged on the same timeline.
+- The robot uploads all of it to a Google Drive folder every five minutes. No computer needs to be nearby.
+
+## A study session, step by step
+
+| When | Who | What happens |
+|---|---|---|
+| **Before** | Researcher | Installs the app on the robot from the Reachy Mini Control app, signs the robot in to Google Drive once, and enrolls each participant's voice (about 20 seconds of speech per person). |
+| **During** | Participants | Talk with Reachy. Reachy greets them, answers, and addresses each person by name once it recognizes their voice. |
+| **After** | Researcher | Opens the Google Drive folder. It holds one transcript per app run (JSONL and CSV), one audio clip per person utterance, and one folder per person. The same files stay on the robot. |
+
+## How it works
+
+<p align="center">
+  <img src="docs/readme/how_it_works.svg" alt="Diagram: the microphone audio goes to a speech service that turns speech into text, writes a reply with a language model, and speaks it through Reachy. On the device, the app also keeps a copy of the audio, identifies the speaker by voice, writes one record per utterance, and uploads the data folder to Google Drive every five minutes. Voice ID also sends the language model a hidden note saying who is speaking." width="100%">
+</p>
+
+1. **The conversation works as in Pollen's app.** The microphone streams audio to a speech service on Hugging Face (by default, the server that Pollen Robotics hosts). The service turns speech into text, a language model writes Reachy's reply and chooses its movements, and speech synthesis speaks the reply through the robot.
+2. **Voice ID runs on the device.** The app keeps a copy of the audio it sends. When the speech service reports where an utterance started and ended, the app cuts out that piece and computes a voiceprint with NVIDIA's TitaNet-S speaker model, run locally with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). It compares the voiceprint with the known voices and assigns a speaker ID.
+3. **Reachy is told who is speaking.** When the speaker changes, the app sends the language model a note that is not spoken aloud. The note names the person, if their name is known, and lists what Reachy remembered about them. Reachy's `remember` and `forget` tools then change that person's own memory file.
+4. **The study recorder writes one record per utterance:** the words, the start and end times, the speaker ID and how well the voice matched, and the audio clip. Robot actions and other events go into the same file.
+5. **The uploader copies the data folder to Google Drive** every five minutes. Without internet, the files wait on the robot and upload later.
+
+## What gets recorded
+
+Everything goes into one data folder, `~/talk_with_reachy_data/` on the robot (or on the Mac, in the simulation):
+
+```
+talk_with_reachy_data/
+├── transcripts/<robot>_<date-time>_<id>.jsonl   one file per app run
+├── transcripts/<same name>.csv                  the same timeline as a spreadsheet
+├── audio/<same name>/<seq>_<speaker ID>.wav     one clip per person utterance
+├── people/library.json                         voiceprints of all known voices
+└── people/<speaker ID>/memory.v1.json           what Reachy remembers about each person
 ```
 
-Include dev dependencies:
-```bash
-uv sync --group dev
+One utterance in the transcript looks like this (one line in the file, spread out here):
+
+```json
+{
+  "session_id": "9f2c…",
+  "type": "utterance",
+  "seq": 1,
+  "time": "2026-10-01 09:00:16.020-04:00",
+  "start": "2026-10-01 09:00:13.101-04:00",
+  "end": "2026-10-01 09:00:15.870-04:00",
+  "duration_s": 2.769,
+  "elapsed_s": 0.756,
+  "speaker": "person",
+  "speaker_id": "P01",
+  "speaker_name": "Alice",
+  "match_score": 0.712,
+  "id_status": "matched",
+  "audio_file": "audio/reachy-mini_20261001-090012_9f2c12/0001_P01.wav",
+  "text": "Hi Reachy, what are you doing?"
+}
 ```
 
-</details>
+[STUDY_SETUP.md](STUDY_SETUP.md#what-is-recorded) describes every field and event.
 
-> [!NOTE]
-> Run `uv sync --frozen` to install the exact dependency set from `uv.lock` without re-resolving versions.
+## Try it
 
-<details>
-<summary>Using pip</summary>
+**In the simulation, without a robot.** Start the simulation in the Reachy Mini Control app on a Mac, install Talk with Reachy, and talk through the Mac's microphone. The app writes transcripts, speaker IDs, and audio clips to `~/talk_with_reachy_data` on the Mac. To test the Google Drive upload as well, sign the Mac in once with `bash deploy/google_dry_run.sh` ([details](STUDY_SETUP.md#5-sign-in-to-google-drive-one-time-per-device)).
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
+**On a Reachy Mini.** The installable app is a private Hugging Face Space, because it carries the app's Google sign-in secret. To get access, contact [@renkaima](https://github.com/renkaima). The app then appears in the Control app's store under *Private*. [STUDY_SETUP.md](STUDY_SETUP.md#setup-in-order) lists every setup step, from publishing the Space to enrolling participants.
 
-Install dev dependencies:
-```bash
-pip install -e .[dev]                   # Development tools
-```
+**From source, for developers.** The [developer reference](docs/ORIGINAL_README.md) covers installing from source, configuration, and command-line options; here the command is `talk-with-reachy`. The Google client secret is not in this repository, so a copy run from source keeps its study files on the device.
 
-</details>
+## Good to know
 
-## Configuration
+- **Audio leaves the device.** As in Pollen's app, the microphone audio goes to the speech service on Hugging Face. With this app, the hidden notes also send it people's names and what Reachy remembers about them. To keep audio on your own hardware, run your own speech service ([connection modes](docs/ORIGINAL_README.md#hugging-face-connection-modes)).
+- **Check voice ID before relying on it.** The voice-matching thresholds come from a check on clean recordings of six speakers, not on any study population or in a noisy room. Run a pilot in which an observer notes who speaks, and compare the notes with the transcript ([details](STUDY_SETUP.md#voice-identification)).
+- **One label per utterance.** When two people talk in the same turn, the utterance is labeled with the voice that dominates it, or `unknown`.
+- **The Python package is `talk_with_reachy`,** so the app installs next to Pollen's official conversation app on the same robot without replacing it.
 
-The default setup uses the Hugging Face backend and does not require an API key.
+## Credits and license
 
-Copy `.env.example` to `.env` when you want to point Hugging Face at your own local endpoint.
-
-| Variable | Description |
-|----------|-------------|
-| `REALTIME_TRANSCRIPTION_LANGUAGE` | Optional input transcription language for the realtime backend. Defaults to `en`; set to a backend-supported code such as `zh` for Chinese. |
-| `HF_REALTIME_CONNECTION_MODE` | Hugging Face connection selector: `deployed` uses the built-in Hugging Face server; `local` uses `HF_REALTIME_WS_URL`. Defaults to `deployed`. |
-| `HF_REALTIME_WS_URL` | Direct websocket endpoint for your own Hugging Face backend. Accepts either a base URL like `ws://127.0.0.1:8765/v1` or the full websocket URL `ws://127.0.0.1:8765/v1/realtime`. Used when `HF_REALTIME_CONNECTION_MODE=local`. |
-| `HF_TOKEN` | Optional token for Hugging Face access. Local endpoints receive only this explicitly configured token. |
-| `REACHY_MINI_APP_TIMEOUT_MINUTES` | Minutes of inactivity before Reachy goes to sleep and the app stops. Defaults to `1440` (one day); set to `0` to disable. |
-
-### Hugging Face Connection Modes
-
-Use the built-in Hugging Face server through the app-managed Space proxy. This is the default for a new install; set it explicitly only when you want to switch back from a saved local endpoint:
-
-```env
-HF_REALTIME_CONNECTION_MODE=deployed
-```
-
-Deployed session allocation falls back to cached `hf auth login` credentials and reports the daemon-provided hardware ID when available. Cached credentials and the hardware ID are not sent to local endpoints.
-
-Run your own realtime voice backend using [speech-to-speech](https://github.com/huggingface/speech-to-speech) on the same machine as the conversation app:
-
-```env
-HF_REALTIME_CONNECTION_MODE=local
-HF_REALTIME_WS_URL=ws://127.0.0.1:8765/v1/realtime
-```
-
-Run your own Hugging Face backend on your laptop and connect to it from Reachy Mini Wireless over the same Wi-Fi network:
-
-```env
-HF_REALTIME_CONNECTION_MODE=local
-HF_REALTIME_WS_URL=ws://<your-laptop-lan-ip>:8765/v1/realtime
-```
-
-For that LAN setup, make sure the backend listens on an address reachable from the robot, not only on `127.0.0.1`.
-
-If the backend stays bound to loopback on your laptop, you can forward it into the robot over SSH instead:
-
-```bash
-ssh -N -R 8765:127.0.0.1:8765 <robot-user>@<robot-host>
-```
-
-Then set this on the robot:
-
-```env
-HF_REALTIME_CONNECTION_MODE=local
-HF_REALTIME_WS_URL=ws://127.0.0.1:8765/v1/realtime
-```
-
-In the web UI's Settings view, the Connection section lets you choose either the built-in server or a local `host:port` target. The UI writes `HF_REALTIME_CONNECTION_MODE` for you, and the local path writes `HF_REALTIME_WS_URL` with a default of `localhost:8765`.
-
-## Running the app
-
-Activate your virtual environment, then launch:
-
-```bash
-reachy-mini-conversation-app
-```
-
-> [!TIP]
-> Make sure the Reachy Mini daemon is running before launching the app. If you see a `TimeoutError`, it means the daemon isn't started. See [Reachy Mini's SDK](https://github.com/pollen-robotics/reachy_mini/) for setup instructions.
-
-The app runs in console mode. Add `--ui` to serve the web interface at http://127.0.0.1:7860/.
-
-### CLI options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--no-camera` | `False` | Run without camera capture. |
-| `--ui` | `False` | Serve the web UI at http://127.0.0.1:7860/, in addition to console mode. |
-| `--robot-name` | `None` | Optional. Connect to a specific robot by name when running multiple daemons on the same subnet. See [Multiple robots on the same subnet](#advanced-features). |
-| `--debug` | `False` | Enable verbose logging for troubleshooting. |
-
-### Examples
-
-```bash
-# Audio-only conversation (no camera)
-reachy-mini-conversation-app --no-camera
-
-# Launch with the minimal web UI for personality/mic/settings control
-reachy-mini-conversation-app --ui
-```
-
-## LLM tools exposed to the assistant
-
-The default profile exposes these tools. Use Tools → Tool access to customize any profile.
-Every bundled profile enables `head_tracking` by default; users can still disable it per personality.
-
-| Tool | Action | Dependencies |
-|------|--------|--------------|
-| `dance` | Queue a dance from `reachy_mini_dances_library`. | Core install only. |
-| `stop_dance` | Clear queued dances. | Core install only. |
-| `play_emotion` | Play a recorded emotion clip via Hugging Face datasets. | Core install only. Uses the default open emotions dataset: [`pollen-robotics/reachy-mini-emotions-library`](https://huggingface.co/datasets/pollen-robotics/reachy-mini-emotions-library). |
-| `stop_emotion` | Clear queued emotions. | Core install only. |
-| `camera` | Capture the latest camera frame and analyze it with the selected realtime backend. | Core install only. Requires the camera (disable with `--no-camera`). |
-| `idle_do_nothing` | Explicitly remain idle during an idle turn. Not intended for normal conversation turns. | Core install only. |
-| `move_head` | Queue a head pose change (left/right/up/down/front). | Core install only. |
-| `head_tracking` | Follow the user's face with the head, or stop following. | Core install only. Requires a daemon with the `vision` extra and a camera. |
-| `go_to_sleep` | Run Reachy's sleep movement and stop the current app after an explicit user request. | Core install only. |
-| `sweep_look` | Sweep Reachy's head left, right, and back to center. | Shared tool, enabled by default in the default profile. |
-| `remember` | Save one short, stable fact about the user for future sessions. | Core install only. Stored in the app instance data directory. |
-| `forget` | Remove a saved memory fact by matching a short query. | Core install only. |
-| `volume_control` | Read or change Reachy's speaker or microphone volume. | Core install only. Uses the daemon REST API; setting the speaker volume plays a short confirmation sound. |
-| `robot_status` | Read one status topic: `name`, `software` (version, update available), `wifi` (IP address, network), `account` (Hugging Face sign-in), `imu` (which way the head is tilted, motion, temperature), `apps` (installed apps). | Core install only. Uses the daemon REST API. The update check and the Wi-Fi network details are wireless-version only; the IP address is reported on any robot. |
-| `pollen_robotics_reachy_mini_search_tool__search_web` | Search the web and return a short list of results. | Preinstalled MCP Space: `pollen-robotics/reachy-mini-search-tool`. |
-| `pollen_robotics_reachy_mini_weather_tool__get_weather` | Report today's weather for a place: current conditions, high and low temperature, and rain chance. | Preinstalled MCP Space: `pollen-robotics/reachy-mini-weather-tool`. |
-| `pollen_robotics_reachy_mini_time_tool__get_time` | Report the current time for a timezone or the user's local time, or the difference between two timezones. | Preinstalled MCP Space: `pollen-robotics/reachy-mini-time-tool`. |
-
-> [!NOTE]
-> `remember`/`forget` facts are stored in `memory.v1.json` inside the app's instance data directory (`~/.local/share/reachy_mini_conversation_app/` by default, or the instance path used by the desktop launcher). `forget` only removes facts matched by query. To reset all remembered facts, delete this file.
-
-## Creating and adding tools
-
-Tools can run locally as Python code or remotely in an MCP-compatible Hugging Face Space. Keep robot, camera, and local-data operations in local tools. A Space is a better fit for shareable, stateless services such as search and external API lookups.
-
-### Local tools
-
-Create one Python module per tool, with the file name matching the tool's unique `name`. See [`idle_do_nothing.py`](src/reachy_mini_conversation_app/tools/idle_do_nothing.py) for a minimal implementation.
-
-Each tool subclasses `Tool` and defines `name`, a model-facing `description`, an object-shaped JSON Schema in `parameters_schema`, and an async `__call__` method. Use `ToolDependencies` for runtime services, and set `needs_response = False` for actions that should not trigger a spoken follow-up. Catch expected operational failures, log them with the module logger, and return `{"error": "..."}` so the conversation can continue.
-
-Restart the app after adding the module. Use Tools → Tool access to enable it for a personality, or add its name to that profile's `default_tools` in `profile.md`. See [External profiles and tools](#external-profiles-and-tools) for external directories and autoload behavior.
-
-### Hugging Face Space tools
-
-To publish a remote tool, create a Gradio Space, expose its API as MCP with `mcp_server=True`, and give each function clear type hints and docstrings. Verify that `https://<space-subdomain>.hf.space/gradio_api/mcp/schema` lists the expected tools before installing the Space.
-
-Use the maintained [weather](https://huggingface.co/spaces/pollen-robotics/reachy-mini-weather-tool), [time](https://huggingface.co/spaces/pollen-robotics/reachy-mini-time-tool), and [search](https://huggingface.co/spaces/pollen-robotics/reachy-mini-search-tool) Spaces as examples. See Gradio's [MCP server guide](https://www.gradio.app/guides/building-mcp-server-with-gradio) for additional publishing guidance and [Installing Hugging Face Space tools](#installing-hugging-face-space-tools) for this app's installation steps.
-
-## Advanced features
-
-Built-in motion content is published as open Hugging Face datasets:
-
-- Emotions: [`pollen-robotics/reachy-mini-emotions-library`](https://huggingface.co/datasets/pollen-robotics/reachy-mini-emotions-library)
-- Dances: [`pollen-robotics/reachy-mini-dances-library`](https://huggingface.co/datasets/pollen-robotics/reachy-mini-dances-library)
-
-<details>
-<summary>Custom profiles</summary>
-
-Create custom profiles with dedicated instructions and per-profile tool access.
-
-Select and save a startup profile in the UI. The choice is stored in `startup_settings.json`. Before one is saved, `REACHY_MINI_CUSTOM_PROFILE=<name>` can select `profiles/<name>/`; otherwise the app uses `default`.
-
-Every profile directory contains one strict schema-version-1 `profile.md`. TOML metadata is enclosed by `+++`; the remaining Markdown body is the realtime assistant prompt:
-
-```markdown
-+++
-schema_version = 1
-voice = "Aiden"
-greeting = "Greet me warmly in one sentence, in character, and vary the wording each time."
-hidden = false
-default_tools = [
-  "dance",
-  "camera",
-  "sweep_look",
-]
-+++
-
-## Identity
-
-You are a concise, friendly robot guide.
-```
-
-`schema_version`, `default_tools`, and a non-empty Markdown body are required. `voice`, `greeting`, and `hidden` are optional. Set `hidden = true` to omit a profile from the UI. An empty `default_tools` list is valid and inherits nothing.
-
-`default_tools` is the authored baseline. Tools → Tool access stores overrides in instance-local `profile_toolsets.json` without changing bundled profiles. Restoring defaults removes the override. Active-profile changes reconnect the conversation; other changes apply when selected.
-
-Profile directories are data-only. Python tool implementations belong in `src/reachy_mini_conversation_app/tools/`, or in `REACHY_MINI_EXTERNAL_TOOLS_DIRECTORY` for external tools. Each enabled tool ID must resolve to a shared tool, an external tool, or a tool from an installed Hugging Face Space.
-
-See [Creating and adding tools](#creating-and-adding-tools) for the local tool interface and a maintained example.
-
-To manage personalities in the UI:
-
-With `--ui`, Home lists the available profiles and the built-in default:
-
-- Tap a card to apply that personality and start talking.
-- Tap "Manage tools" on a saved personality to open its tool access directly.
-- Tap "Custom" to create a personality with a name, instructions, and optional greeting. It inherits the default tools, which can be changed under "Manage tools". Managed instances store it at `user_personalities/<name>/profile.md`; standalone runs use `external_content/user_personalities/<name>/profile.md`.
-
-Switching a personality reloads its prompt and effective tools through a quick backend reconnect. Editing `profile.md` directly requires re-selecting the profile or restarting the app.
-
-</details>
-
-<details>
-<summary>Locked profile mode</summary>
-
-To create a locked variant of the app that cannot switch profiles, edit `src/reachy_mini_conversation_app/config.py` and set the `LOCKED_PROFILE` constant to the desired profile name:
-```python
-LOCKED_PROFILE: str | None = "mars_rover"  # Lock to this profile
-```
-When set, the app ignores saved startup settings, `REACHY_MINI_CUSTOM_PROFILE`, and UI selection. The UI marks the profile as locked and disables editing.
-
-</details>
-
-<a id="external-profiles-and-tools"></a>
-
-<details>
-<summary>External profiles and tools</summary>
-
-You can extend the app with profiles/tools stored outside the repository defaults.
-
-- Core profiles are under `profiles/`.
-- Core tools are under `src/reachy_mini_conversation_app/tools/`.
-
-Recommended layout:
-
-```text
-external_content/
-├── external_profiles/
-│   └── my_profile/
-│       └── profile.md
-├── external_tools/
-│   └── my_custom_tool.py
-├── user_personalities/
-│   └── my_custom_profile/
-│       └── profile.md
-├── installed_tool_spaces.json
-└── profile_toolsets.json
-```
-
-Environment variables:
-
-Set these values in your `.env` when you want env-driven external profile/tool selection:
-
-```env
-# Optional fallback/manual profile selector:
-REACHY_MINI_CUSTOM_PROFILE=my_profile
-REACHY_MINI_EXTERNAL_PROFILES_DIRECTORY=./external_content/external_profiles
-REACHY_MINI_EXTERNAL_TOOLS_DIRECTORY=./external_content/external_tools
-# Optional convenience mode:
-# AUTOLOAD_EXTERNAL_TOOLS=1
-```
-
-Loading rules:
-
-- Profiles: each directory requires a schema-version-1 `profile.md` with explicit `default_tools`; there is no cross-profile fallback.
-- Default mode: enabled IDs must resolve to a shared, external, or installed Tool Space tool.
-- Autoload: `AUTOLOAD_EXTERNAL_TOOLS=1` adds every valid `*.py` module from `REACHY_MINI_EXTERNAL_TOOLS_DIRECTORY`.
-- Web UI: Tools → Tool access enables external modules per profile; it does not upload or edit Python.
-- Separation: profile directories contain data only; external Python belongs in `REACHY_MINI_EXTERNAL_TOOLS_DIRECTORY`.
-- Tool names: every loaded class needs a unique `Tool.name`; duplicates fail fast.
-
-</details>
-
-<a id="installing-hugging-face-space-tools"></a>
-
-<details>
-<summary>Installing Hugging Face Space tools</summary>
-
-You can install MCP-compatible Hugging Face Spaces as remote tool sources for this app. Private Spaces work too, as long as `HF_TOKEN` is set (or you have run `hf auth login`) for an account that can access them. To publish a new Space, follow [Creating and adding tools](#hugging-face-space-tools).
-
-Tools → Tool Spaces installs or refreshes a global source. Its tools then appear under Tools → Tool access for per-profile selection. Removing a Space removes its tools from every profile. Active-profile changes reconnect the conversation; other changes apply when selected.
-
-The app accepts Hugging Face Spaces exposing the standard `/gradio_api/mcp/` endpoint, not arbitrary MCP URLs. Installation discovers the Space's tools and assigns namespaced local IDs, so do not guess or hard-code those IDs beforehand.
-
-```bash
-# install + enable in active profile
-reachy-mini-conversation-app tool-spaces add <owner/space-name>
-
-# enable in a specific profile
-reachy-mini-conversation-app tool-spaces add <owner/space-name> --profile NAME
-
-# install without enabling
-reachy-mini-conversation-app tool-spaces add <owner/space-name> --install-only
-
-# list installed spaces
-reachy-mini-conversation-app tool-spaces list
-
-# remove an installed space
-reachy-mini-conversation-app tool-spaces remove owner/space-name
-```
-
-Bundled Pollen Spaces use static specs and are enabled by the default profile. Custom Spaces are validated through the Hugging Face Hub; HF tokens are sent only to private Spaces. Tool metadata is cached in:
-
-- `installed_tool_spaces.json` in the managed app instance directory
-- `external_content/installed_tool_spaces.json` in terminal mode
-
-Startup and profile switching read this cache without discovery or MCP probing. Network access occurs only during install, refresh, or remote tool calls. Per-profile access is stored in `profile_toolsets.json` beside the manifest, or under `external_content/` in terminal mode.
-
-Recommended tags for discoverability on Hugging Face:
-
-- `reachy-mini-tool`
-- `mcp`
-
-Tags are advisory; installation still requires successful MCP validation.
-
-> [!NOTE]
-> Preinstalled Pollen Spaces can be removed like any other (`tool-spaces remove pollen-robotics/reachy-mini-weather-tool`). To restore access, reinstall the Space and restore or update the relevant profile under "Tool access".
-
-</details>
-
-<details>
-<summary>Multiple robots on the same subnet</summary>
-
-If you run multiple Reachy Mini daemons on the same network, use:
-
-```bash
-reachy-mini-conversation-app --robot-name <name>
-```
-
-`<name>` must match the daemon's `--robot-name` value so the app connects to the correct robot.
-
-</details>
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [`AGENTS.md`](AGENTS.md) for coding-agent standards.
-
-## License
-
-Apache 2.0
+- Built on Pollen Robotics' [reachy_mini_conversation_app](https://github.com/pollen-robotics/reachy_mini_conversation_app) (Apache 2.0). The changes are the commits after upstream commit `5eb39ed`. This app is not affiliated with or endorsed by Pollen Robotics; "Reachy Mini" names the robot that the app runs on.
+- Voice ID uses NVIDIA NeMo's TitaNet-S speaker model through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
+- Maintained by Renkai Ma ([@renkaima](https://github.com/renkaima)).
+- License: Apache 2.0, see [LICENSE](LICENSE).

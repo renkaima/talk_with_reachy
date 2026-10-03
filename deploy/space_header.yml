@@ -1,0 +1,13 @@
+# Hugging Face Space settings. deploy/publish_space.py puts these lines, between --- lines, at the top of
+# the README.md it uploads; the Control App finds the app by the reachy_mini_python_app tag.
+title: Talk with Reachy
+emoji: 🎤
+colorFrom: red
+colorTo: blue
+sdk: static
+pinned: false
+short_description: Conversation app with timed, speaker-labeled transcripts
+suggested_storage: large
+tags:
+ - reachy_mini
+ - reachy_mini_python_app

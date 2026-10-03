@@ -14,7 +14,7 @@ We welcome all contributions: bug fixes, new features, documentation, testing, a
    git clone https://github.com/pollen-robotics/reachy_mini_conversation_app
    cd reachy_mini_conversation_app
    ```
-2. Follow the [README installation guide](README.md#installation) to set up dependencies and `.env`.
+2. Follow the [installation guide](docs/ORIGINAL_README.md#installation) to set up dependencies and `.env`.
 3. Run the contributor checks after your changes:
    ```bash
    uv run ruff check . --fix
