@@ -92,7 +92,11 @@ The CSV file has one row per record and opens directly in Excel. Its columns are
 | `voice_enrollment_started`, `voice_enrolled`, `voice_enrollment_expired`, `voice_linked`, `voice_renamed`, `voice_deleted` | Voice commands take effect (see [Managing voices](#managing-voices)). |
 | `voice_model_ready`, `voice_model_unavailable` | The speaker model has loaded, or cannot be loaded yet (it is retried every minute). |
 | `backend_connected`, `backend_disconnected` | The connection to the speech server opens or closes, with the reason. |
-| `mic_muted`, `mic_unmuted` | The microphone is muted or unmuted from the app's web page. |
+| `mic_muted`, `mic_unmuted` | The microphone is muted or unmuted, from the app's web page or while *Take a Break* plays music. |
+| `break_started`, `break_finished`, `break_check` | Day Center profile: a break starts (`started_by` self or staff, `person`, `feeling`, `activity`), ends (`seconds`, `completed: false` if it was stopped), and the answer to the closing question. All three share a `break_id`. |
+| `asked_to_repeat` | Day Center profile: Reachy asks someone to say something again, with what it `heard`. |
+| `schedule_asked`, `schedule_changed` | Day Center profile: someone asks what is next, or staff change the schedule. |
+| `daily_summary_given`, `staff_note` | Day Center profile: someone asks how the day went (`level` totals or staff), or a staff member adds a note. |
 | `upload_signed_out`, `upload_failing`, `upload_recovered` | Upload problems start or end (`target` says where: `Google Drive`). A failure that continues is logged once, not on every pass. |
 | `clock_sync` | The robot's clock becomes synchronized (or stops being synchronized) with network time. |
 
@@ -256,6 +260,15 @@ Start the app, then enroll each consented participant as described in [Managing 
 
 Start the app, say a few sentences to Reachy, and wait up to five minutes. In Google Drive, under **My Drive → Talk with Reachy**, you should see `transcripts/` (a JSONL and a CSV file), `audio/` (one folder of clips per run), and `people/`. On the robot, `ls ~/talk_with_reachy_data/transcripts` shows the local copies.
 
+## Day Center profile
+
+The Day Center profile adds three features for the day center study. Choose **day_center** as the personality in the app's settings page (or set `REACHY_MINI_CUSTOM_PROFILE=day_center`). The default profile is unchanged.
+
+- **Staff are recognized by voice ID.** Enroll staff with IDs that start with `S` (`enroll S01 --name Renkai`) and participants with `P`. Only a voice identified as `S` within the last 15 seconds can change the schedule, hear names in the daily summary, or add notes. With voice ID off, nobody is treated as staff. A participant who speaks right after staff, in an utterance too short to identify (under about one second), can still be taken for that staff member.
+- **Take a Break** runs as the `take_break` tool. Breathing lasts one minute (six slow breaths); music plays one of three one-minute tracks in `src/talk_with_reachy/sounds/` with the microphone muted, so Reachy neither answers the music nor records it; the movement game lasts about 40 seconds. Saying "stop" cancels breathing or the movement game; the music cannot be stopped by voice, because the microphone is off while it plays.
+- **What's Next** saves the schedule in `day_center/schedule.json` inside the data folder. Times use the robot's clock, so set the robot's time zone (for example `sudo timedatectl set-timezone America/New_York`).
+- **Daily Summary** counts today's events from the transcript files, so it only works while study logging is on.
+
 ## Behavior to know about
 
 - **Upload timing.** Files upload every five minutes while the app runs, and once more when it stops. A file that is still growing is uploaded again; Google Drive updates the same file instead of adding a copy.
@@ -298,6 +311,8 @@ All settings are optional environment variables. You can put them in the app's `
 | `src/talk_with_reachy/onedrive_upload.py`, `deploy/onedrive_dry_run.*`, `deploy/copy_login_to_robot.sh` | New, currently off. Microsoft sign-in and OneDrive upload. |
 | `src/talk_with_reachy/huggingface_realtime.py` | Passes speech, transcript, audio, and response events to `study_recorder`, and can add a system note to the conversation. |
 | `src/talk_with_reachy/tools/background_tool_manager.py` | Logs `tool_started` and `tool_finished`. |
+| `profiles/day_center/`, `src/talk_with_reachy/day_center.py`, `tools/take_break.py`, `tools/break_check.py`, `tools/what_next.py`, `tools/daily_summary.py`, `tools/asked_to_repeat.py`, `sounds/` | New. The Day Center profile and its tools and music. |
+| `src/talk_with_reachy/console.py`, `main.py`, `tools/core_tools.py` | Tools can mute the microphone (`ToolDependencies.set_mic_muted`). |
 | `src/talk_with_reachy/prompts.py`, `tools/remember.py`, `tools/forget.py` | Per-person memory when voice ID is on. |
 | `src/talk_with_reachy/console.py` | Logs microphone mute changes. |
 | `src/talk_with_reachy/main.py` | Starts and stops study logging around the conversation. |

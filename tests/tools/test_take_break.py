@@ -1,0 +1,120 @@
+import asyncio
+from typing import Any
+from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
+
+from talk_with_reachy import study_log, day_center
+from talk_with_reachy.tools import take_break as take_break_module
+from talk_with_reachy.tools.core_tools import ToolDependencies
+
+
+@pytest.fixture
+def events(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
+    """Capture study events and skip the waiting, with P01 'Sam' speaking."""
+    recorded: list[tuple[str, dict[str, Any]]] = []
+
+    async def no_wait(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(study_log, "record_event", lambda name, **fields: recorded.append((name, fields)))
+    monkeypatch.setattr(take_break_module.asyncio, "sleep", no_wait)
+    monkeypatch.setattr(day_center, "current_speaker", lambda *_: ("P01", "Sam"))
+    return recorded
+
+
+def _deps() -> ToolDependencies:
+    return ToolDependencies(
+        reachy_mini=MagicMock(), movement_manager=MagicMock(), set_mic_muted=MagicMock(return_value=False)
+    )
+
+
+@pytest.mark.asyncio
+async def test_breathing_queues_guided_breaths_and_logs_the_break(events: list[tuple[str, dict[str, Any]]]) -> None:
+    """A self-started breathing break should move the robot and log its start and finish."""
+    deps = _deps()
+
+    result = await take_break_module.TakeBreak()(deps, activity="breathe", started_by="self", feeling="not good")
+
+    assert result["status"] == "finished"
+    assert isinstance(deps.movement_manager.queue_move.call_args.args[0], take_break_module.GuidedBreathingMove)
+    assert [name for name, _ in events] == ["break_started", "break_finished"]
+    started = events[0][1]
+    assert started["person"] == "Sam" and started["speaker_id"] == "P01" and started["feeling"] == "not good"
+    assert events[1][1]["completed"] is True
+
+
+@pytest.mark.asyncio
+async def test_music_plays_a_bundled_track_with_the_microphone_muted(events: list[tuple[str, dict[str, Any]]]) -> None:
+    """Music should play one of the calm tracks and always unmute the microphone afterwards."""
+    deps = _deps()
+
+    await take_break_module.TakeBreak()(deps, activity="music", started_by="staff", person="Noah")
+
+    played = deps.reachy_mini.media.play_sound.call_args.args[0]
+    assert "calm_" in played and played.endswith(".wav")
+    assert [call.args[0] for call in deps.set_mic_muted.call_args_list] == [True, False]
+    assert events[0][1]["started_by"] == "staff" and events[0][1]["person"] == "Noah"
+
+
+@pytest.mark.asyncio
+async def test_music_leaves_a_microphone_muted_by_staff_muted(events: list[tuple[str, dict[str, Any]]]) -> None:
+    """If staff had muted the microphone before the music, it stays muted afterwards."""
+    deps = _deps()
+    deps.set_mic_muted = MagicMock(return_value=True)
+
+    await take_break_module.TakeBreak()(deps, activity="music", started_by="self")
+
+    assert [call.args[0] for call in deps.set_mic_muted.call_args_list] == [True, True]
+
+
+@pytest.mark.asyncio
+async def test_staff_started_break_does_not_log_the_staff_member_as_the_person(
+    events: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """Without a name from staff, the person stays empty instead of taking the speaker's name."""
+    await take_break_module.TakeBreak()(_deps(), activity="breathe", started_by="staff")
+
+    assert events[0][1]["person"] == ""
+
+
+@pytest.mark.asyncio
+async def test_cancelled_break_stops_moving_and_unmutes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cancelling mid-activity should clear queued moves, unmute, and log the break as not completed."""
+    recorded: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(study_log, "record_event", lambda name, **fields: recorded.append((name, fields)))
+    monkeypatch.setattr(day_center, "current_speaker", lambda *_: (None, ""))
+    deps = _deps()
+
+    task = asyncio.create_task(take_break_module.TakeBreak()(deps, activity="music", started_by="self"))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    deps.movement_manager.clear_move_queue.assert_called_once()
+    assert deps.set_mic_muted.call_args.args[0] is False
+    assert recorded[-1] == ("break_finished", {**recorded[-1][1], "completed": False})
+
+
+@pytest.mark.asyncio
+async def test_unknown_activity_is_rejected(events: list[tuple[str, dict[str, Any]]]) -> None:
+    """An activity outside the three choices must not start anything."""
+    result = await take_break_module.TakeBreak()(_deps(), activity="dance", started_by="self")
+
+    assert "error" in result
+    assert events == []
+
+
+def test_guided_breath_antennas_stand_up_on_the_in_breath() -> None:
+    """Antennas are spread when the breath is out and upright at the top of the in-breath."""
+    move = take_break_module.GuidedBreathingMove(breaths=1)
+
+    _, out_antennas, _ = move.evaluate(0.0)
+    _, in_antennas, _ = move.evaluate(take_break_module.INHALE_S)
+
+    assert out_antennas is not None and in_antennas is not None
+    assert abs(out_antennas[1]) > 0.5
+    assert np.allclose(in_antennas, 0.0)
+    assert move.duration == take_break_module.INHALE_S + take_break_module.EXHALE_S

@@ -27,6 +27,13 @@ A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_re
 - Reachy moves its head, shows emotions, and can dance, look through its camera, or check the weather.
 - Reachy recognizes who is speaking, uses their name, and remembers things about each person separately. It is instructed never to tell one person what it remembers about another.
 
+**In the Day Center profile** (choose it in the app's settings; see [STUDY_SETUP.md](STUDY_SETUP.md#day-center-profile))
+
+- *Take a Break*: anyone, or staff on their behalf, can ask for a break. Reachy asks "good or not good?", offers two activities (slow breathing with its head and antennas, one minute of calm music, or a movement game), and asks one closing question afterwards.
+- *What's Next*: staff tell Reachy the weekly schedule and today's changes; anyone can ask what comes next.
+- *Daily Summary*: anyone can ask how the day went and hears totals; staff voices also hear who took each break and can add notes.
+- Reachy asks only two-choice questions, treats short or incomplete answers as real requests, and logs each time it asks someone to repeat.
+
 **For the researcher**
 
 - Every utterance, by a person or by Reachy, is logged with its start time, end time, and duration.
@@ -123,6 +130,7 @@ The app is provided "as is", without warranty of any kind, under the [Apache 2.0
 ## Credits and license
 
 - Built on Pollen Robotics' [reachy_mini_conversation_app](https://github.com/pollen-robotics/reachy_mini_conversation_app) (Apache 2.0). The changes are the commits after upstream commit `5eb39ed`. This app is not affiliated with or endorsed by Pollen Robotics; "Reachy Mini" names the robot that the app runs on.
+- The calm music for *Take a Break* is by Kevin MacLeod, released into the public domain on FreePD.com (see `src/talk_with_reachy/sounds/CREDITS.txt`).
 - Voice ID uses NVIDIA NeMo's TitaNet-S speaker model through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 - Maintained by Renkai Ma ([@renkaima](https://github.com/renkaima)).
 - License: Apache 2.0, see [LICENSE](LICENSE).

@@ -1,0 +1,11 @@
+Music played by the take_break tool (activity "music").
+
+All three tracks are by Kevin MacLeod and were released into the public domain on FreePD.com
+("free-to-use, Public Domain music downloads"; the site has since closed). The source MP3 files
+were taken from the CC0-1.0-Music collection on GitHub (https://github.com/SoundSafari/CC0-1.0-Music,
+folder freepd.com). Each file here is the first 60 seconds, with a 1 s fade-in, a 4 s fade-out,
+loudness normalized to -16 LUFS, mono, 22.05 kHz.
+
+calm_infinite_peace.wav       Kevin MacLeod, "Infinite Peace"
+calm_kalimba_relaxation.wav   Kevin MacLeod, "Kalimba Relaxation Music"
+calm_piano_magic_motive.wav   Kevin MacLeod, "Piano Magic Motive"

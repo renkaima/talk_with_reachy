@@ -73,6 +73,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 talk_with_reachy = [
   "static/**/*",
+  "sounds/*",
   ".env.example",
 ]
 talk_with_reachy_data = [

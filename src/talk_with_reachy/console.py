@@ -598,11 +598,7 @@ class LocalStream:
         @rpc.method("conversation.mic")  # type: ignore[untyped-decorator]
         def _rpc_mic(params: dict[str, object]) -> dict[str, object]:
             if "muted" in params:
-                muted = bool(params["muted"])
-                if muted != self._mic_muted:
-                    study_log.record_event("mic_muted" if muted else "mic_unmuted")
-                self._mic_muted = muted
-                logger.info("Microphone %s via /rpc", "muted" if self._mic_muted else "unmuted")
+                self.set_mic_muted(bool(params["muted"]))
             return {"muted": self._mic_muted}
 
         @rpc.method("backend.config")  # type: ignore[untyped-decorator]
@@ -843,6 +839,15 @@ class LocalStream:
         for task in self._tasks:
             if not task.done():
                 loop.call_soon_threadsafe(task.cancel)
+
+    def set_mic_muted(self, muted: bool) -> bool:
+        """Stop or resume sending microphone audio to the conversation; return the previous state."""
+        was_muted = self._mic_muted
+        if muted != was_muted:
+            study_log.record_event("mic_muted" if muted else "mic_unmuted")
+        self._mic_muted = muted
+        logger.info("Microphone %s", "muted" if muted else "unmuted")
+        return was_muted
 
     def clear_audio_queue(self) -> None:
         """Flush queued playback audio immediately on user barge-in.
