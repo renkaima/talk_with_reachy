@@ -1,5 +1,6 @@
 import asyncio
 from typing import Any
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -46,14 +47,18 @@ async def test_breathing_queues_guided_breaths_and_logs_the_break(events: list[t
 
 
 @pytest.mark.asyncio
-async def test_music_plays_a_bundled_track_with_the_microphone_muted(events: list[tuple[str, dict[str, Any]]]) -> None:
-    """Music should play one of the calm tracks and always unmute the microphone afterwards."""
+async def test_music_plays_between_the_chimes_with_a_countdown_and_the_microphone_muted(
+    events: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """Music plays one calm track between the start and end chimes, shows a countdown, and unmutes afterwards."""
     deps = _deps()
 
     await take_break_module.TakeBreak()(deps, activity="music", started_by="staff", person="Noah")
 
-    played = deps.reachy_mini.media.play_sound.call_args.args[0]
-    assert "calm_" in played and played.endswith(".wav")
+    played = [Path(call.args[0]).name for call in deps.reachy_mini.media.play_sound.call_args_list]
+    assert played[0] == "chime_start.wav" and played[-1] == "chime_end.wav"
+    assert played[1].startswith("calm_") and len(played) == 3
+    assert isinstance(deps.movement_manager.queue_move.call_args.args[0], take_break_module.CountdownMove)
     assert [call.args[0] for call in deps.set_mic_muted.call_args_list] == [True, False]
     assert events[0][1]["started_by"] == "staff" and events[0][1]["person"] == "Noah"
 
@@ -107,6 +112,18 @@ async def test_unknown_activity_is_rejected(events: list[tuple[str, dict[str, An
     assert events == []
 
 
+def test_countdown_folds_the_antennas_from_upright_to_down() -> None:
+    """The visual timer starts upright and is fully folded when the time is up."""
+    move = take_break_module.CountdownMove(60.0)
+
+    _, start, _ = move.evaluate(0.0)
+    _, end, _ = move.evaluate(60.0)
+
+    assert start is not None and end is not None
+    assert np.allclose(np.abs(start), take_break_module.UPRIGHT_ANTENNA)
+    assert abs(end[1]) == pytest.approx(1.2)
+
+
 def test_guided_breath_antennas_stand_up_on_the_in_breath() -> None:
     """Antennas are spread when the breath is out and upright at the top of the in-breath."""
     move = take_break_module.GuidedBreathingMove(breaths=1)
@@ -116,5 +133,5 @@ def test_guided_breath_antennas_stand_up_on_the_in_breath() -> None:
 
     assert out_antennas is not None and in_antennas is not None
     assert abs(out_antennas[1]) > 0.5
-    assert np.allclose(in_antennas, 0.0)
+    assert np.allclose(np.abs(in_antennas), take_break_module.UPRIGHT_ANTENNA)
     assert move.duration == take_break_module.INHALE_S + take_break_module.EXHALE_S

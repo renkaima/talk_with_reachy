@@ -75,7 +75,8 @@ class WhatNext(Tool):
     name = "what_next"
     description = (
         "The day center schedule. "
-        "next: what comes next today; today: the whole day. Both include the person's own items. "
+        "next: the next two activities today, with minutes until each; today: the whole day. "
+        "Both include the person's own items and today's changes to the usual schedule. "
         "set_day: STAFF ONLY, replace the usual schedule for a weekday (or 'weekdays' for Monday to Friday). "
         "change_today: STAFF ONLY, cancel activities today and/or add new ones. "
         "Times are 24-hour HH:MM; 'two in the afternoon' is 14:00."
@@ -124,15 +125,27 @@ class WhatNext(Tool):
         if action in ("next", "today"):
             person = str(kwargs.get("person") or speaker_name)
             plan = plan_for(schedule, date.today(), person)
-            now = datetime.now().strftime("%H:%M")
+            now = datetime.now()
+            clock = now.strftime("%H:%M")
             study_log.record_event("schedule_asked", action=action, person=person, speaker_id=speaker_id)
             logger.info("Tool call: what_next action=%s person=%s", action, person)
+            answer: dict[str, Any] = {"now": clock}
+            # Advance notice helps most when the usual order changes, so changes come first in the answer.
+            change = schedule["changes"].get(date.today().isoformat(), {})
+            added = [item["activity"] for item in change.get("add", []) if item in plan]
+            if change.get("remove") or added:
+                answer["changed_today"] = {"cancelled": change.get("remove", []), "added": added}
             if action == "today":
-                return {"now": now, "today": plan}
-            upcoming = [item for item in plan if item["time"] >= now][:UPCOMING_ITEMS]
-            return (
-                {"now": now, "next": upcoming} if upcoming else {"now": now, "next": [], "note": "Nothing else today."}
-            )
+                answer["today"] = plan
+                return answer
+            answer["next"] = [
+                {**item, "in_minutes": int(item["time"][:2]) * 60 + int(item["time"][3:]) - now.hour * 60 - now.minute}
+                for item in plan
+                if item["time"] >= clock
+            ][:UPCOMING_ITEMS]
+            if not answer["next"]:
+                answer["note"] = "That is all for today."
+            return answer
 
         if action not in ("set_day", "change_today"):
             return {"error": f"unknown action {action!r}"}

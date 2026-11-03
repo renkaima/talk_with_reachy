@@ -1,4 +1,9 @@
-Music played by the take_break tool (activity "music").
+Sounds played by the take_break tool.
+
+chime_start.wav and chime_end.wav are soft bell tones generated for this app (sine tones with a
+gentle decay); they mark the start and the end of every break activity.
+
+Music (activity "music"):
 
 All three tracks are by Kevin MacLeod and were released into the public domain on FreePD.com
 ("free-to-use, Public Domain music downloads"; the site has since closed). The source MP3 files

@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -54,6 +54,28 @@ async def test_moving_an_activity_keeps_it_at_the_new_time(monkeypatch: pytest.M
     result = await tool(_deps(), action="change_today", remove=["gym"], items=[{"time": "15:00", "activity": "Gym"}])
 
     assert result["today"] == [{"time": "15:00", "activity": "Gym", "person": ""}]
+
+
+@pytest.mark.asyncio
+async def test_next_leads_with_todays_changes_and_counts_minutes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A participant hears that today differs, with minutes until each next item; others' items stay hidden."""
+    _speaker(monkeypatch, "S01", "Renkai")
+    tool = what_next_module.WhatNext()
+    weekday = what_next_module.WEEKDAYS[date.today().weekday()]
+    await tool(_deps(), action="set_day", weekday=weekday, items=[{"time": "23:58", "activity": "Gym"}])
+    await tool(
+        _deps(),
+        action="change_today",
+        remove=["Gym"],
+        items=[{"time": "23:59", "activity": "Swimming"}, {"time": "23:59", "activity": "Dentist", "person": "Noah"}],
+    )
+    monkeypatch.setattr(what_next_module, "datetime", MagicMock(now=lambda: datetime(2026, 11, 2, 23, 50)))
+    _speaker(monkeypatch, "P02", "Maria")
+
+    result = await tool(_deps(), action="next")
+
+    assert result["changed_today"] == {"cancelled": ["Gym"], "added": ["Swimming"]}
+    assert result["next"] == [{"time": "23:59", "activity": "Swimming", "person": "", "in_minutes": 9}]
 
 
 @pytest.mark.asyncio
