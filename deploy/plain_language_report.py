@@ -1,0 +1,89 @@
+"""Check how closely Reachy's own words followed the Day Center language rules, from the study transcripts.
+
+For each transcript file, and for all files together, it reports Reachy's sentence length, the share of
+sentences over 12 words, the Flesch-Kincaid grade level (textstat), and how many of Reachy's questions were
+two-choice questions versus yes/no questions. Questions that look like yes/no questions are written to
+plain_language_flags.csv in the current folder, for a person to review. Run it on a Mac, with uv:
+
+    uv run --no-project --with "textstat==0.7.8" python deploy/plain_language_report.py ~/talk_with_reachy_data/transcripts
+
+(textstat 0.7.8 counts syllables with the cmudict package; later versions need an extra NLTK download.)
+
+The yes/no check is a simple heuristic (a question that starts with a verb such as "do" or "are" and has no
+"or"); read the flagged lines before reporting them.
+"""
+
+import re
+import csv
+import sys
+import json
+from pathlib import Path
+
+import textstat
+
+
+MAX_WORDS = 12
+YES_NO_START = re.compile(
+    r"^(do|does|did|are|is|was|were|can|could|will|would|should|have|has|shall|may)\b", re.IGNORECASE
+)
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+
+def reachy_lines(path: Path) -> list[str]:
+    """Reachy's utterances in one transcript file, in order."""
+    lines = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        record = json.loads(line)
+        if record.get("type") == "utterance" and record.get("speaker") == "reachy" and record.get("text"):
+            lines.append(str(record["text"]))
+    return lines
+
+
+def summarize(texts: list[str]) -> tuple[dict[str, float | int], list[str]]:
+    """Language measures for a list of Reachy utterances, and the questions that look like yes/no questions."""
+    sentences = [sentence for text in texts for sentence in SENTENCE_SPLIT.split(text.strip()) if sentence]
+    questions = [sentence for sentence in sentences if sentence.endswith("?")]
+    yes_no = [q for q in questions if YES_NO_START.match(q) and not re.search(r"\bor\b", q, re.IGNORECASE)]
+    words = [len(sentence.split()) for sentence in sentences]
+    measures: dict[str, float | int] = {
+        "utterances": len(texts),
+        "sentences": len(sentences),
+        "mean_words_per_sentence": round(sum(words) / len(words), 1) if words else 0,
+        "share_over_12_words": round(sum(count > MAX_WORDS for count in words) / len(words), 3) if words else 0,
+        "flesch_kincaid_grade": round(textstat.flesch_kincaid_grade(" ".join(texts)), 1) if texts else 0,
+        "questions": len(questions),
+        "two_choice_questions": sum(bool(re.search(r"\bor\b", q, re.IGNORECASE)) for q in questions),
+        "yes_no_questions": len(yes_no),
+    }
+    return measures, yes_no
+
+
+def main() -> int:
+    """Print the measures per transcript and overall, and write the flagged questions to a CSV file."""
+    folder = Path(sys.argv[1] if len(sys.argv) > 1 else "~/talk_with_reachy_data/transcripts").expanduser()
+    files = sorted(folder.glob("*.jsonl"))
+    if not files:
+        print(f"No transcript files (*.jsonl) in {folder}")
+        return 1
+    every_text: list[str] = []
+    flags: list[tuple[str, str]] = []
+    for path in files:
+        texts = reachy_lines(path)
+        measures, yes_no = summarize(texts)
+        print(path.name, json.dumps(measures))
+        every_text.extend(texts)
+        flags.extend((path.name, question) for question in yes_no)
+    overall, _ = summarize(every_text)
+    print("ALL", json.dumps(overall))
+    # Written here, not next to the transcripts, so it never joins the study data that uploads to Drive.
+    output = Path.cwd() / "plain_language_flags.csv"
+    with output.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["transcript", "question"])
+        writer.writerows(flags)
+    print(f"{len(flags)} possible yes/no questions written to {output}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

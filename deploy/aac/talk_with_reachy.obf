@@ -1,0 +1,123 @@
+{
+  "format": "open-board-0.1",
+  "id": "talk_with_reachy",
+  "locale": "en",
+  "name": "Talk with Reachy",
+  "description_html": "The words Reachy understands in the Day Center profile. Each button speaks a short phrase aloud for Reachy to hear. Row 1: requests. Row 2: answers to Reachy's questions. Row 3: break activities.",
+  "license": {
+    "type": "CC0",
+    "copyright_notice_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  "buttons": [
+    {
+      "id": "break",
+      "label": "I need a break",
+      "vocalization": "Reachy, I need a break.",
+      "background_color": "rgb(204, 229, 255)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "next",
+      "label": "What is next?",
+      "vocalization": "Reachy, what is next?",
+      "background_color": "rgb(204, 229, 255)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "stop",
+      "label": "Stop",
+      "vocalization": "Stop.",
+      "background_color": "rgb(204, 229, 255)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "help",
+      "label": "Help",
+      "vocalization": "I need help from staff.",
+      "background_color": "rgb(204, 229, 255)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "good",
+      "label": "Good",
+      "vocalization": "Good.",
+      "background_color": "rgb(255, 242, 204)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "not_good",
+      "label": "Not good",
+      "vocalization": "Not good.",
+      "background_color": "rgb(255, 242, 204)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "better",
+      "label": "Better",
+      "vocalization": "Better.",
+      "background_color": "rgb(255, 242, 204)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "same",
+      "label": "The same",
+      "vocalization": "The same.",
+      "background_color": "rgb(255, 242, 204)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "breathe",
+      "label": "Breathe",
+      "vocalization": "Breathe with me.",
+      "background_color": "rgb(214, 245, 214)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "music",
+      "label": "Music",
+      "vocalization": "Listen to music.",
+      "background_color": "rgb(214, 245, 214)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "move",
+      "label": "Move",
+      "vocalization": "Move with me.",
+      "background_color": "rgb(214, 245, 214)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "else",
+      "label": "Something else",
+      "vocalization": "Something else.",
+      "background_color": "rgb(214, 245, 214)",
+      "border_color": "rgb(80, 80, 80)"
+    }
+  ],
+  "grid": {
+    "rows": 3,
+    "columns": 4,
+    "order": [
+      [
+        "break",
+        "next",
+        "stop",
+        "help"
+      ],
+      [
+        "good",
+        "not_good",
+        "better",
+        "same"
+      ],
+      [
+        "breathe",
+        "music",
+        "move",
+        "else"
+      ]
+    ]
+  },
+  "images": [],
+  "sounds": []
+}

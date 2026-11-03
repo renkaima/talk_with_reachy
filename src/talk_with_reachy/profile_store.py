@@ -24,7 +24,7 @@ LEGACY_TOOLS_FILENAME = "tools.txt"
 LEGACY_VOICE_FILENAME = "voice.txt"
 LEGACY_GREETING_FILENAME = "greeting.txt"
 _FRONT_MATTER_DELIMITER = "+++"
-_PROFILE_METADATA_FIELDS = {"schema_version", "default_tools", "voice", "greeting", "hidden"}
+_PROFILE_METADATA_FIELDS = {"schema_version", "default_tools", "voice", "greeting", "hidden", "turn_silence_ms"}
 _STORE_LOCK = threading.Lock()
 
 
@@ -41,6 +41,8 @@ class ProfileDefinition:
     voice: str | None
     greeting: str | None
     hidden: bool
+    # Silence after speech before the speech server ends the turn; None keeps the server default.
+    turn_silence_ms: int | None = None
 
 
 def canonical_profile_name(profile: str | None) -> str:
@@ -116,6 +118,11 @@ def _parse_profile_document(source_path: Path) -> ProfileDefinition:
     hidden = metadata.get("hidden", False)
     if not isinstance(hidden, bool):
         raise ProfileFormatError(f"Invalid hidden flag in {source_path}: expected a boolean.")
+    turn_silence_ms = metadata.get("turn_silence_ms")
+    if turn_silence_ms is not None and (
+        not isinstance(turn_silence_ms, int) or isinstance(turn_silence_ms, bool) or not 100 <= turn_silence_ms <= 5000
+    ):
+        raise ProfileFormatError(f"Invalid turn_silence_ms in {source_path}: expected milliseconds from 100 to 5000.")
 
     instructions = "\n".join(lines[closing_index + 1 :]).strip()
     if not instructions:
@@ -126,6 +133,7 @@ def _parse_profile_document(source_path: Path) -> ProfileDefinition:
         voice=_optional_string(metadata, "voice", source_path),
         greeting=_optional_string(metadata, "greeting", source_path),
         hidden=hidden,
+        turn_silence_ms=turn_silence_ms,
     )
 
 

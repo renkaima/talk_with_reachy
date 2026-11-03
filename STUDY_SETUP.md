@@ -33,7 +33,7 @@ talk_with_reachy_data/
 Each line of the JSONL file is one record. The first record is `session_start` and the last is `session_end`. In between are `utterance` and `event` records, in the order in which they happened. When the app stops normally, one `speaker_summary` record per speaker comes just before `session_end`:
 
 ```json
-{"session_id": "9f2c…", "type": "session_start", "time": "2026-10-01 09:00:12.345-04:00", "elapsed_s": 0.0, "schema_version": 3, "robot_id": "reachy-mini", "app_version": "1.2.0", "utc_offset": "-0400", "clock_synced": true, "voice_id": {"enabled": true, "model": "nemo_en_titanet_small.onnx", "match_threshold": 0.45}}
+{"session_id": "9f2c…", "type": "session_start", "time": "2026-10-01 09:00:12.345-04:00", "elapsed_s": 0.0, "schema_version": 3, "robot_id": "reachy-mini", "app_version": "1.3.0", "utc_offset": "-0400", "clock_synced": true, "voice_id": {"enabled": true, "model": "nemo_en_titanet_small.onnx", "match_threshold": 0.45}}
 {"session_id": "9f2c…", "type": "utterance", "seq": 1, "time": "2026-10-01 09:00:16.020-04:00", "start": "2026-10-01 09:00:13.101-04:00", "end": "2026-10-01 09:00:15.870-04:00", "duration_s": 2.769, "elapsed_s": 0.756, "speaker": "person", "speaker_id": "P01", "speaker_name": "Alice", "match_score": 0.712, "id_status": "matched", "audio_file": "audio/reachy-mini_20261001-090012_9f2c12/0001_P01.wav", "text": "Hi Reachy, what are you doing?"}
 {"session_id": "9f2c…", "type": "event", "event": "tool_started", "time": "2026-10-01 09:00:16.900-04:00", "elapsed_s": 4.555, "tool": "dance", "args": "{\"move\": \"happy\"}", "idle": false, "call_id": "call_8"}
 {"session_id": "9f2c…", "type": "utterance", "seq": 2, "time": "2026-10-01 09:00:19.410-04:00", "start": "2026-10-01 09:00:16.430-04:00", "end": "2026-10-01 09:00:19.300-04:00", "duration_s": 2.87, "elapsed_s": 4.085, "speaker": "reachy", "speaker_id": "reachy", "speaker_name": "Reachy", "text": "Just looking around! Want to see a dance?"}
@@ -269,6 +269,9 @@ The Day Center profile adds three features for the day center study. Choose **da
 - **What's Next** saves the schedule in `day_center/schedule.json` inside the data folder. Times use the robot's clock, so set the robot's time zone (for example `sudo timedatectl set-timezone America/New_York`).
 - **Daily Summary** counts today's events from the transcript files, so it only works while study logging is on.
 - **Predictable behavior.** Reachy greets with the same sentence every time, uses the same words for the same things, asks two-choice questions only, and has no emotion or dance tools in this profile, so it never plays a random emotion or dance when the room is quiet.
+- **Time to finish speaking.** The profile sets `turn_silence_ms = 1200`: Reachy answers only after 1.2 seconds of silence, so a person who pauses mid-sentence is not cut off. The speech-to-speech server otherwise ends a turn after 64 ms of silence. Any profile can set `turn_silence_ms` (100 to 5000); without it, the server's own setting applies.
+- **AAC board.** `deploy/aac/talk_with_reachy.obf` is a 12-button board in Open Board Format. Its buttons speak the words Reachy uses, for example "Reachy, I need a break.", "Reachy, what is next?", "Not good.", "Breathe with me.", and "I need help from staff.". Import it into Cboard (Settings → Import) or another AAC app that reads OBF, on a tablet near the robot. Reachy hears the tablet's voice like any other voice, so voice ID logs it as its own speaker, not as the person who pressed the buttons.
+- **Checking Reachy's language.** After a session, run `uv run --no-project --with "textstat==0.7.8" python deploy/plain_language_report.py ~/talk_with_reachy_data/transcripts` on a Mac. It reports Reachy's mean sentence length, the share of sentences over 12 words, the Flesch-Kincaid grade, and how many of Reachy's questions were two-choice or yes/no. Questions that look like yes/no questions go to `plain_language_flags.csv` in the current folder, not the data folder, so the file does not upload to Drive.
 
 ## Behavior to know about
 
@@ -314,6 +317,8 @@ All settings are optional environment variables. You can put them in the app's `
 | `src/talk_with_reachy/tools/background_tool_manager.py` | Logs `tool_started` and `tool_finished`. |
 | `profiles/day_center/`, `src/talk_with_reachy/day_center.py`, `tools/take_break.py`, `tools/break_check.py`, `tools/what_next.py`, `tools/daily_summary.py`, `tools/asked_to_repeat.py`, `sounds/` | New. The Day Center profile and its tools and music. |
 | `src/talk_with_reachy/console.py`, `main.py`, `tools/core_tools.py` | Tools can mute the microphone (`ToolDependencies.set_mic_muted`). |
+| `src/talk_with_reachy/profile_store.py`, `prompts.py`, `huggingface_realtime.py` | A profile can set `turn_silence_ms`, which is sent to the speech server as the silence that ends a turn. |
+| `deploy/aac/talk_with_reachy.obf`, `deploy/plain_language_report.py` | New. The AAC board and the language check for the Day Center profile. |
 | `src/talk_with_reachy/prompts.py`, `tools/remember.py`, `tools/forget.py` | Per-person memory when voice ID is on. |
 | `src/talk_with_reachy/console.py` | Logs microphone mute changes. |
 | `src/talk_with_reachy/main.py` | Starts and stops study logging around the conversation. |

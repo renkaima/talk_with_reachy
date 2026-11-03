@@ -76,6 +76,15 @@ def get_session_voice(default: str | None = None) -> str:
         return fallback
 
 
+def get_session_turn_silence_ms() -> int | None:
+    """Return the active profile's end-of-turn silence in milliseconds, or None for the server default."""
+    try:
+        return _active_profile().turn_silence_ms
+    except (FileNotFoundError, ProfileFormatError) as exc:
+        logger.warning("Failed to load the active profile turn silence: %s", exc)
+        return None
+
+
 def get_session_greeting_prompt() -> str:
     """Return the active profile greeting prompt or the app default."""
     try:

@@ -41,6 +41,7 @@ from talk_with_reachy.prompts import (
     get_session_voice,
     get_session_instructions,
     get_session_greeting_prompt,
+    get_session_turn_silence_ms,
 )
 from talk_with_reachy.streaming import AdditionalOutputs, audio_to_int16
 from talk_with_reachy.study_recorder import StudyRecorder
@@ -225,6 +226,10 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
     def _get_session_config(self, tool_specs: list[ToolSpec]) -> RealtimeSessionCreateRequestParam:
         """Return the Hugging Face OpenAI-compatible session config."""
+        turn_detection = ServerVad(type="server_vad", interrupt_response=True)
+        turn_silence_ms = get_session_turn_silence_ms()
+        if turn_silence_ms is not None:
+            turn_detection["silence_duration_ms"] = turn_silence_ms
         return RealtimeSessionCreateRequestParam(
             type="realtime",
             instructions=get_session_instructions(self.instance_path),
@@ -237,7 +242,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         model="gpt-4o-transcribe",
                         language=config.REALTIME_TRANSCRIPTION_LANGUAGE,
                     ),
-                    turn_detection=ServerVad(type="server_vad", interrupt_response=True),
+                    turn_detection=turn_detection,
                 ),
                 output=RealtimeAudioConfigOutputParam(
                     format=_native_rate_audio_pcm(),  # type: ignore[typeddict-item]

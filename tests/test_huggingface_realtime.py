@@ -293,6 +293,19 @@ def test_handler_ignores_unsupported_hf_profile_voice(monkeypatch: Any) -> None:
     assert session["audio"]["output"]["voice"] == HF_DEFAULT_VOICE
 
 
+@pytest.mark.parametrize("turn_silence_ms", [None, 1200])
+def test_session_turn_detection_uses_the_profile_silence(monkeypatch: Any, turn_silence_ms: int | None) -> None:
+    """A profile's end-of-turn silence is sent to the server; without one the server default applies."""
+    monkeypatch.setattr(hf_mod, "get_session_voice", lambda default=HF_DEFAULT_VOICE: default)
+    monkeypatch.setattr(hf_mod, "get_session_turn_silence_ms", lambda: turn_silence_ms)
+
+    handler = HuggingFaceRealtimeHandler(ToolDependencies(reachy_mini=MagicMock(), movement_manager=MagicMock()))
+    turn_detection = handler._get_session_config([])["audio"]["input"]["turn_detection"]
+
+    assert turn_detection.get("silence_duration_ms") == turn_silence_ms
+    assert turn_detection["interrupt_response"] is True
+
+
 def test_handler_normalizes_hf_voice_case(monkeypatch: Any) -> None:
     """Lowercase Hugging Face speaker names should resolve to the curated UI value."""
     monkeypatch.setattr(hf_mod, "get_session_voice", lambda default=HF_DEFAULT_VOICE: "serena")

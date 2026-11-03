@@ -42,6 +42,8 @@ def test_profile_document_round_trip(tmp_path: Path) -> None:
         ("+++\nschema_version = 1\ndefault_tools = 'dance'\n+++\nPrompt\n", "expected a list of strings"),
         ("+++\nschema_version = 1\ndefault_tools = []\nvoiec = 'Aiden'\n+++\nPrompt\n", "Unknown profile metadata"),
         ("+++\nschema_version = 1\ndefault_tools = []\n+++\n", "empty instruction body"),
+        ("+++\nschema_version = 1\ndefault_tools = []\nturn_silence_ms = 20\n+++\nPrompt\n", "turn_silence_ms"),
+        ("+++\nschema_version = 1\ndefault_tools = []\nturn_silence_ms = '1s'\n+++\nPrompt\n", "turn_silence_ms"),
     ],
 )
 def test_invalid_profile_document_is_rejected(tmp_path: Path, document: str, error: str) -> None:
@@ -52,6 +54,15 @@ def test_invalid_profile_document_is_rejected(tmp_path: Path, document: str, err
 
     with pytest.raises(ProfileFormatError, match=error):
         read_profile_from_directory("invalid", profile_directory)
+
+
+def test_day_center_profile_waits_longer_for_the_end_of_a_turn() -> None:
+    """The Day Center profile sets a longer end-of-turn silence; profiles that omit it keep the server default."""
+    day_center = read_profile_from_directory("day_center", DEFAULT_PROFILES_DIRECTORY / "day_center")
+    default = read_profile_from_directory("default", DEFAULT_PROFILES_DIRECTORY / "default")
+
+    assert day_center.turn_silence_ms == 1200
+    assert default.turn_silence_ms is None
 
 
 def test_profile_listing_requires_profile_document(tmp_path: Path) -> None:
