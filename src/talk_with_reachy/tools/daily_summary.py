@@ -12,6 +12,8 @@ STAFF_QUESTIONS = (
     "Would you like to add anything about today?",
     "Did anyone do something with Reachy together today?",
 )
+# What the profile has Reachy say when it did not understand someone.
+REPEAT_PHRASE = "say it again"
 
 
 class DailySummary(Tool):
@@ -55,12 +57,16 @@ class DailySummary(Tool):
         events = day_center.todays_events({"break_started", "break_check", "asked_to_repeat"})
         breaks = [event for event in events if event["event"] == "break_started"]
         checks = {event.get("break_id"): event.get("answer") for event in events if event["event"] == "break_check"}
+        # The model can forget to call asked_to_repeat, so Reachy's own words "Please say it again" in today's
+        # transcripts are a backup count. Both usually count the same moments, so the larger one is used.
+        repeats_logged = sum(event["event"] == "asked_to_repeat" for event in events)
+        repeats_said = sum(REPEAT_PHRASE in line.lower() for line in day_center.todays_reachy_lines())
         summary: dict[str, Any] = {
             "breaks": len(breaks),
             "self_started": sum(event.get("started_by") == "self" for event in breaks),
             "staff_started": sum(event.get("started_by") == "staff" for event in breaks),
             "activities": dict(Counter(str(event.get("activity")) for event in breaks)),
-            "times_I_asked_someone_to_repeat": sum(event["event"] == "asked_to_repeat" for event in events),
+            "times_I_asked_someone_to_repeat": max(repeats_logged, repeats_said),
         }
         if staff:
             summary["breaks_by_person"] = [

@@ -45,6 +45,8 @@ class ToolDependencies:
     motion_duration_s: float = 1.0
     go_to_sleep: Callable[[], dict[str, Any]] | None = None
     set_mic_muted: Callable[[bool], bool] | None = None
+    # Seconds until Reachy's current speech has finished playing (0 when quiet), set by the realtime handler.
+    seconds_until_reachy_is_quiet: Callable[[], float] | None = None
 
 
 class ToolSpec(TypedDict):

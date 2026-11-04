@@ -31,11 +31,10 @@ def staff_is_speaking() -> bool:
     return speaker_id is not None and speaker_id.upper().startswith(STAFF_ID_PREFIX)
 
 
-def todays_events(names: set[str], today: date | None = None) -> list[dict[str, Any]]:
-    """Study log events named in ``names`` that were recorded today, oldest first, across all sessions."""
-    day = today or date.today()
+def _todays_records(day: date) -> list[dict[str, Any]]:
+    """Every transcript record written on ``day``, across all sessions."""
     folder = study_log.transcripts_dir(study_log.configured_data_dir())
-    events: list[dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
     for path in sorted(folder.glob("*.jsonl")):
         if datetime.fromtimestamp(path.stat().st_mtime).date() < day:
             continue
@@ -47,10 +46,25 @@ def todays_events(names: set[str], today: date | None = None) -> list[dict[str, 
             except json.JSONDecodeError as e:
                 logger.warning("Skipping unreadable line in %s: %s", path.name, e)
                 continue
-            if (
-                record.get("type") == "event"
-                and record.get("event") in names
-                and str(record.get("time", "")).startswith(day.isoformat())
-            ):
-                events.append(record)
+            if str(record.get("time", "")).startswith(day.isoformat()):
+                records.append(record)
+    return records
+
+
+def todays_events(names: set[str], today: date | None = None) -> list[dict[str, Any]]:
+    """Study log events named in ``names`` that were recorded today, oldest first, across all sessions."""
+    events = [
+        record
+        for record in _todays_records(today or date.today())
+        if record.get("type") == "event" and record.get("event") in names
+    ]
     return sorted(events, key=lambda record: str(record["time"]))
+
+
+def todays_reachy_lines(today: date | None = None) -> list[str]:
+    """Return what Reachy said today, across all sessions."""
+    return [
+        str(record.get("text", ""))
+        for record in _todays_records(today or date.today())
+        if record.get("type") == "utterance" and record.get("speaker") == "reachy"
+    ]

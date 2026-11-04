@@ -1,9 +1,12 @@
-"""Check how closely Reachy's own words followed the Day Center language rules, from the study transcripts.
+"""Check how closely Reachy's own words and timing followed the Day Center rules, from the study transcripts.
 
 For each transcript file, and for all files together, it reports Reachy's sentence length, the share of
-sentences over 12 words, the Flesch-Kincaid grade level (textstat), and how many of Reachy's questions were
-two-choice questions versus yes/no questions. Questions that look like yes/no questions are written to
-plain_language_flags.csv in the current folder, for a person to review. Run it on a Mac, with uv:
+sentences over 12 words, the Flesch-Kincaid grade level (textstat), how many of Reachy's questions were
+two-choice questions versus yes/no questions, and how often Reachy said "Please say it again" (a count of
+recognition failures that does not depend on the model logging asked_to_repeat). It also reports the median
+time from the end of a person's speech to the start of Reachy's reply, to check how long Reachy really waits.
+Questions that look like yes/no questions are written to plain_language_flags.csv in the current folder, for
+a person to review. Run it on a Mac, with uv:
 
     uv run --no-project --with "textstat==0.7.8" python deploy/plain_language_report.py ~/talk_with_reachy_data/transcripts
 
@@ -17,7 +20,9 @@ import re
 import csv
 import sys
 import json
+import statistics
 from pathlib import Path
+from datetime import datetime
 
 import textstat
 
@@ -39,6 +44,28 @@ def reachy_lines(path: Path) -> list[str]:
     return lines
 
 
+def reply_gaps(path: Path) -> list[float]:
+    """Seconds from the end of each person utterance to the start of the Reachy utterance right after it."""
+    utterances = [
+        record
+        for record in map(json.loads, path.read_text(encoding="utf-8").splitlines())
+        if record.get("type") == "utterance"
+    ]
+    return [
+        (datetime.fromisoformat(after["start"]) - datetime.fromisoformat(before["end"])).total_seconds()
+        for before, after in zip(utterances, utterances[1:])
+        if before.get("speaker") != "reachy"
+        and after.get("speaker") == "reachy"
+        and before.get("end")
+        and after.get("start")
+    ]
+
+
+def median_seconds(gaps: list[float]) -> float | None:
+    """Median of the reply gaps, rounded, or None when the transcripts have no start and end times."""
+    return round(statistics.median(gaps), 2) if gaps else None
+
+
 def summarize(texts: list[str]) -> tuple[dict[str, float | int], list[str]]:
     """Language measures for a list of Reachy utterances, and the questions that look like yes/no questions."""
     sentences = [sentence for text in texts for sentence in SENTENCE_SPLIT.split(text.strip()) if sentence]
@@ -54,6 +81,7 @@ def summarize(texts: list[str]) -> tuple[dict[str, float | int], list[str]]:
         "questions": len(questions),
         "two_choice_questions": sum(bool(re.search(r"\bor\b", q, re.IGNORECASE)) for q in questions),
         "yes_no_questions": len(yes_no),
+        "said_please_say_it_again": sum("say it again" in text.lower() for text in texts),
     }
     return measures, yes_no
 
@@ -66,15 +94,18 @@ def main() -> int:
         print(f"No transcript files (*.jsonl) in {folder}")
         return 1
     every_text: list[str] = []
+    every_gap: list[float] = []
     flags: list[tuple[str, str]] = []
     for path in files:
         texts = reachy_lines(path)
+        gaps = reply_gaps(path)
         measures, yes_no = summarize(texts)
-        print(path.name, json.dumps(measures))
+        print(path.name, json.dumps({**measures, "median_seconds_before_reply": median_seconds(gaps)}))
         every_text.extend(texts)
+        every_gap.extend(gaps)
         flags.extend((path.name, question) for question in yes_no)
     overall, _ = summarize(every_text)
-    print("ALL", json.dumps(overall))
+    print("ALL", json.dumps({**overall, "median_seconds_before_reply": median_seconds(every_gap)}))
     # Written here, not next to the transcripts, so it never joins the study data that uploads to Drive.
     output = Path.cwd() / "plain_language_flags.csv"
     with output.open("w", encoding="utf-8", newline="") as handle:

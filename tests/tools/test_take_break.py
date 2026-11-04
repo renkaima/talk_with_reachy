@@ -104,6 +104,36 @@ async def test_cancelled_break_stops_moving_and_unmutes(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
+async def test_activity_starts_only_after_reachy_finishes_speaking(events: list[tuple[str, dict[str, Any]]]) -> None:
+    """The start chime waits until Reachy's spoken instructions have finished playing."""
+    deps = _deps()
+    quiet = MagicMock(side_effect=[1.5, 0.4, 0.0])
+    deps.seconds_until_reachy_is_quiet = quiet
+    checks_before_each_sound: list[tuple[str, int]] = []
+    deps.reachy_mini.media.play_sound.side_effect = lambda path: checks_before_each_sound.append(
+        (Path(path).name, quiet.call_count)
+    )
+
+    await take_break_module.TakeBreak()(deps, activity="breathe", started_by="self")
+
+    assert checks_before_each_sound[0] == ("chime_start.wav", 3)
+    assert quiet.call_count == 3
+
+
+@pytest.mark.skipif(not take_break_module.DANCE_AVAILABLE, reason="dance library not installed")
+@pytest.mark.asyncio
+async def test_movement_game_repeats_each_move_before_the_next(events: list[tuple[str, dict[str, Any]]]) -> None:
+    """Each move is shown several times in a row, so people have time to copy it."""
+    deps = _deps()
+
+    await take_break_module.TakeBreak()(deps, activity="move", started_by="self")
+
+    names = [call.args[0].move_name for call in deps.movement_manager.queue_move.call_args_list]
+    repeats = take_break_module.MOVE_REPEATS
+    assert names == [name for name in take_break_module.MOVE_GAME for _ in range(repeats)]
+
+
+@pytest.mark.asyncio
 async def test_unknown_activity_is_rejected(events: list[tuple[str, dict[str, Any]]]) -> None:
     """An activity outside the three choices must not start anything."""
     result = await take_break_module.TakeBreak()(_deps(), activity="dance", started_by="self")

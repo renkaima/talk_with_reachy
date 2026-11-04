@@ -306,6 +306,32 @@ def test_session_turn_detection_uses_the_profile_silence(monkeypatch: Any, turn_
     assert turn_detection["interrupt_response"] is True
 
 
+@pytest.mark.asyncio
+async def test_tools_can_wait_until_reachy_has_finished_speaking(monkeypatch: Any) -> None:
+    """Two seconds of received speech keep Reachy 'speaking' for about two seconds; barge-in ends it at once."""
+    two_seconds = base64.b64encode(np.zeros(2 * HuggingFaceRealtimeHandler.SAMPLE_RATE, dtype=np.int16)).decode()
+    handler = _session_handler(
+        monkeypatch,
+        (
+            _FakeEvent("response.created"),
+            _FakeEvent("response.output_audio.delta", delta=two_seconds),
+            _FakeEvent("response.done"),
+        ),
+    )
+    quiet_in = handler.deps.seconds_until_reachy_is_quiet
+    assert quiet_in is not None and quiet_in() == 0.0
+
+    await handler._run_realtime_session()
+
+    assert 1.0 < quiet_in() <= 2.0
+    handler._clear_queue = MagicMock()
+    handler.client = _make_fake_realtime_client(
+        events=(_FakeEvent("input_audio_buffer.speech_started", item_id="item-2", audio_start_ms=0),)
+    )
+    await handler._run_realtime_session()
+    assert quiet_in() == 0.0
+
+
 def test_handler_normalizes_hf_voice_case(monkeypatch: Any) -> None:
     """Lowercase Hugging Face speaker names should resolve to the curated UI value."""
     monkeypatch.setattr(hf_mod, "get_session_voice", lambda default=HF_DEFAULT_VOICE: "serena")

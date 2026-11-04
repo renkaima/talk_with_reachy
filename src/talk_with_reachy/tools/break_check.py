@@ -9,19 +9,20 @@ logger = logging.getLogger(__name__)
 
 
 class BreakCheck(Tool):
-    """Save the person's answer to the closing question after a break."""
+    """Save the person's answer when 'good, or not good?' is asked again after a break."""
 
     name = "break_check"
     description = (
-        "Save the answer to the closing question after take_break finishes, "
-        "for example 'better' or 'the same'. Use 'no answer' if they did not answer."
+        "Save the answer to 'Are you feeling good, or not good?', asked again after take_break finishes. "
+        "Use 'no answer' if they did not answer."
     )
     needs_response = False
     parameters_schema = {
         "type": "object",
         "properties": {
             "break_id": {"type": "string", "description": "The break_id that take_break returned."},
-            "answer": {"type": "string", "description": "Their answer in a few words."},
+            # The same answers as take_break's 'feeling', so each break has a before and an after.
+            "answer": {"type": "string", "enum": ["good", "not good", "unclear", "no answer"]},
         },
         "required": ["break_id", "answer"],
     }

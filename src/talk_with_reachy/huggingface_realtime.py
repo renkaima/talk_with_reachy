@@ -165,6 +165,11 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         self._startup_greeting_sent = False
         self._in_flight_tool_calls: set[str] = set()
         self._tool_batch_needs_response = False
+        # When Reachy's queued speech should finish playing; playback starts as soon as audio arrives.
+        # The server sends tool calls while the speech before them is still being spoken, so tools such as
+        # take_break use this to wait until Reachy has finished saying what will happen.
+        self._speech_end_mono = 0.0
+        deps.seconds_until_reachy_is_quiet = self.seconds_until_reachy_is_quiet
 
         # Study data: transcripts with timing, audio clips, voice ID, and events.
         self.study = StudyRecorder(notify_model=self._send_system_note)
@@ -252,6 +257,13 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
             tools=to_realtime_tools_config(tool_specs),
             tool_choice="auto",
         )
+
+    def seconds_until_reachy_is_quiet(self) -> float:
+        """Seconds until Reachy's speech has finished playing; a short wait while a response is still arriving."""
+        remaining = max(0.0, self._speech_end_mono - time.monotonic())
+        if not self._response_done_event.is_set():
+            return max(remaining, 0.2)
+        return remaining
 
     def _is_connected(self) -> bool:
         """Return whether the realtime connection is open."""
@@ -780,6 +792,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self._turn_first_audio_at = None
                         if self._clear_queue:
                             self._clear_queue()
+                            self._speech_end_mono = time.monotonic()
                         self.deps.movement_manager.set_listening(True)
                         logger.debug("User speech started")
 
@@ -881,6 +894,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         decoded_pcm_bytes = base64.b64decode(event.delta)
                         decoded_pcm = np.frombuffer(decoded_pcm_bytes, dtype=np.int16).reshape(1, -1)
                         self.study.assistant_audio(decoded_pcm.size, self.SAMPLE_RATE)
+                        self._speech_end_mono = (
+                            max(self._speech_end_mono, time.monotonic()) + decoded_pcm.size / self.SAMPLE_RATE
+                        )
                         self._mark_activity("assistant_audio_delta")
                         if self._turn_user_done_at is not None and self._turn_first_audio_at is None:
                             self._turn_first_audio_at = time.perf_counter()

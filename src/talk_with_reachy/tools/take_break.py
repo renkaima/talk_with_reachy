@@ -23,7 +23,12 @@ BREATHS = 6
 INHALE_S = 4.0
 EXHALE_S = 6.0  # 10 s per breath, 6 breaths per minute
 MOVE_GAME = ("simple_nod", "side_to_side_sway", "head_tilt_roll", "pendulum_swing")
-MOVE_GAME_ROUNDS = 5
+# Each move (about 2 s) repeats four times before the next one, so people have time to copy it.
+MOVE_REPEATS = 4
+# Longest wait for Reachy to finish its spoken instructions before the start chime, and a short extra pause
+# after them, because the robot's speaker starts a little after the audio reaches the app.
+QUIET_WAIT_MAX_S = 15.0
+PLAYBACK_LAG_S = 0.3
 UPRIGHT_ANTENNA = 0.1745  # ~10° off vertical, as in the SDK's rest pose, to keep the antennas from shaking
 # The same chimes open and close every activity, so the start and the end are always clear.
 START_CHIME = SOUNDS_DIR / "chime_start.wav"
@@ -93,6 +98,23 @@ async def play_and_wait(deps: ToolDependencies, sound: Path) -> None:
     await asyncio.sleep(wav_seconds(sound) + 0.3)
 
 
+async def wait_until_reachy_is_quiet(deps: ToolDependencies) -> None:
+    """Return once Reachy has finished speaking, or after QUIET_WAIT_MAX_S.
+
+    The speech server sends the tool call while Reachy is still saying what will happen, so without this wait
+    the chime and the activity would start over Reachy's instructions.
+    """
+    if deps.seconds_until_reachy_is_quiet is None:
+        return
+    deadline = asyncio.get_running_loop().time() + QUIET_WAIT_MAX_S
+    waited = False
+    while (remaining := deps.seconds_until_reachy_is_quiet()) > 0 and asyncio.get_running_loop().time() < deadline:
+        waited = True
+        await asyncio.sleep(min(remaining, 0.25))
+    if waited:
+        await asyncio.sleep(PLAYBACK_LAG_S)
+
+
 class TakeBreak(Tool):
     """Lead one break activity and wait until it ends."""
 
@@ -102,7 +124,7 @@ class TakeBreak(Tool):
         "breathe: six slow breaths (one minute); your head rises and your antennas stand up on each in-breath. "
         "music: one calm song (one minute); your antennas fold down slowly to show how much is left. "
         "You cannot hear anyone while it plays, so it cannot be stopped. "
-        "move: one short movement game (about 40 seconds) that anyone nearby can copy. "
+        "move: one short movement game (about 35 seconds) that anyone nearby can copy. "
         "A soft chime marks the start and a two-note chime marks the end. "
         "The tool returns when the activity is over."
     )
@@ -164,6 +186,8 @@ class TakeBreak(Tool):
         finished = False
         was_muted: bool | None = None  # mic state before the music, to restore afterwards
         try:
+            await wait_until_reachy_is_quiet(deps)
+            started = loop.time()
             if activity == "music" and deps.set_mic_muted is not None:
                 was_muted = deps.set_mic_muted(True)
             await play_and_wait(deps, START_CHIME)
@@ -172,7 +196,7 @@ class TakeBreak(Tool):
                 deps.movement_manager.queue_move(move)
                 await asyncio.sleep(move.duration)
             elif activity == "move":
-                moves = [DanceQueueMove(move_name) for _ in range(MOVE_GAME_ROUNDS) for move_name in MOVE_GAME]
+                moves = [DanceQueueMove(move_name) for move_name in MOVE_GAME for _ in range(MOVE_REPEATS)]
                 for dance_move in moves:
                     deps.movement_manager.queue_move(dance_move)
                 await asyncio.sleep(sum(dance_move.duration for dance_move in moves))
@@ -201,6 +225,6 @@ class TakeBreak(Tool):
             "status": "finished",
             "break_id": break_id,
             "activity": activity,
-            "next": "Ask one closing choice question, such as 'Do you feel better, or the same?', "
+            "next": "Say 'All done.' Ask again: 'Are you feeling good, or not good?', "
             "then call break_check with their answer.",
         }

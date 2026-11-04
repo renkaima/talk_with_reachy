@@ -29,11 +29,11 @@ A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_re
 
 **In the Day Center profile** (choose it in the app's settings; see [STUDY_SETUP.md](STUDY_SETUP.md#day-center-profile))
 
-- *Take a Break*: anyone, or staff on their behalf, can ask for a break. Reachy asks "good or not good?", offers two activities (slow breathing with its head and antennas, one minute of calm music, or a movement game), and asks one closing question afterwards.
+- *Take a Break*: anyone, or staff on their behalf, can ask for a break. Reachy asks "good or not good?", offers two activities (slow breathing with its head and antennas, one minute of calm music, or a movement game), and asks "good or not good?" again afterwards.
 - *What's Next*: staff tell Reachy the weekly schedule and today's changes; anyone can ask what comes next.
 - *Daily Summary*: anyone can ask how the day went and hears totals; staff voices also hear who took each break and can add notes.
 - Reachy asks only two-choice questions, treats short or incomplete answers as real requests, and logs each time it asks someone to repeat.
-- Reachy waits 1.2 seconds of silence before answering, so people who pause mid-sentence can finish.
+- Reachy waits longer before answering (1.2 seconds of silence instead of the speech server's 64 ms), so people who pause mid-sentence can finish.
 - An AAC board with the same words Reachy uses (`deploy/aac/talk_with_reachy.obf`) can be imported into Cboard or other AAC apps.
 
 **For the researcher**

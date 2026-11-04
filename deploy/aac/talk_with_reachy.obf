@@ -52,16 +52,16 @@
       "border_color": "rgb(80, 80, 80)"
     },
     {
-      "id": "better",
-      "label": "Better",
-      "vocalization": "Better.",
+      "id": "again",
+      "label": "Say it again",
+      "vocalization": "Reachy, please say it again.",
       "background_color": "rgb(255, 242, 204)",
       "border_color": "rgb(80, 80, 80)"
     },
     {
-      "id": "same",
-      "label": "The same",
-      "vocalization": "The same.",
+      "id": "thanks",
+      "label": "Thank you",
+      "vocalization": "Thank you.",
       "background_color": "rgb(255, 242, 204)",
       "border_color": "rgb(80, 80, 80)"
     },
@@ -107,8 +107,8 @@
       [
         "good",
         "not_good",
-        "better",
-        "same"
+        "again",
+        "thanks"
       ],
       [
         "breathe",
