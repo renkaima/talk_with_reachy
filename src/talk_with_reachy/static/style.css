@@ -12,8 +12,10 @@
   --text: #f4f5f7;
   --text-soft: #b8bdc7;
   --text-muted: #848b98;
-  --accent: #ff9500;
-  --accent-soft: rgba(255, 149, 0, 0.18);
+  /* Talk with Reachy palette (see docs/readme/banner.svg): warm yellow on dark, deep teal on light. */
+  --accent: #ffd166;
+  --accent-soft: rgba(255, 209, 102, 0.18);
+  --accent-ink: #1a1300; /* text on an accent background */
   --danger: #ff6a75;
   --success: #34d399;
   --warn: #f59e0b;
@@ -46,6 +48,9 @@
     --text-muted: #697280;
     --shadow-sm: 0 2px 8px rgba(20, 25, 40, 0.08);
     --shadow-lg: 0 16px 48px rgba(20, 25, 40, 0.18);
+    --accent: #0f6f7a;
+    --accent-soft: rgba(15, 111, 122, 0.14);
+    --accent-ink: #ffffff;
   }
 }
 
@@ -61,6 +66,9 @@
   --text-muted: #697280;
   --shadow-sm: 0 2px 8px rgba(20, 25, 40, 0.08);
   --shadow-lg: 0 16px 48px rgba(20, 25, 40, 0.18);
+  --accent: #0f6f7a;
+  --accent-soft: rgba(15, 111, 122, 0.14);
+  --accent-ink: #ffffff;
 }
 
 *,
@@ -291,7 +299,7 @@ button {
 .app-shell__default-personality:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--accent);
-  color: #17130c;
+  color: var(--accent-ink);
 }
 
 .app-shell__default-personality:disabled {
@@ -460,7 +468,7 @@ button {
 
 .btn--primary {
   background: var(--accent);
-  color: #1a0f00;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 

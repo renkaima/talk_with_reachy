@@ -4,123 +4,119 @@
 <head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<meta name="description" content="Realtime voice, vision, motion, personalities, and MCP tools for Reachy Mini." />
-	<title>Reachy Mini Conversation App</title>
+	<meta name="description" content="Talk with Reachy: a research app for Reachy Mini that records timed, speaker-labeled conversations, with an accessible Day Center mode for adults with intellectual and developmental disabilities." />
+	<title>Talk with Reachy</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;family=Manrope:wght@400;500;600&amp;display=swap" rel="stylesheet">
+	<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
 	<header class="hero">
-		<div class="topline">
-			<div class="brand">
-				<span class="logo">🤖</span>
-				<span class="brand-name">Reachy Mini</span>
+		<div class="wrap">
+			<div class="topline">
+				<span class="brand"><span aria-hidden="true">💬</span> Talk with Reachy</span>
+				<span class="pill">A research app for the Reachy Mini robot</span>
 			</div>
-			<div class="pill">Realtime voice · Tool-aware personalities · Expressive motion</div>
-		</div>
-		<div class="hero-grid">
-			<div class="hero-copy">
-				<p class="eyebrow">Conversation App</p>
-				<h1>Talk, see, and move together.</h1>
-				<p class="lede">
-					A camera-aware companion for Reachy Mini. Talk naturally, switch personalities, choose their tools, and add MCP Tool Spaces from a clean web UI.
-				</p>
-				<div class="hero-actions">
-					<a class="btn primary" href="#highlights">Explore features</a>
-					<a class="btn ghost" href="https://github.com/pollen-robotics/reachy_mini_conversation_app" target="_blank" rel="noopener">View source &amp; setup</a>
+			<div class="hero-grid">
+				<div>
+					<h1>Accessible voice conversations, recorded for research.</h1>
+					<p class="lede">
+						People talk with Reachy Mini by voice. Talk with Reachy keeps a timed record of each conversation:
+						what was said, when, and who said it, recognized by voice. Its Day Center mode is designed for adults
+						with intellectual and developmental disabilities (IDD).
+					</p>
+					<div class="actions">
+						<a class="btn primary" href="https://github.com/renkaima/talk_with_reachy/blob/main/STUDY_SETUP.md" target="_blank" rel="noopener">Read the study guide</a>
+						<a class="btn ghost" href="https://github.com/renkaima/talk_with_reachy" target="_blank" rel="noopener">Source on GitHub</a>
+					</div>
+					<p class="note">Research prototype: not a therapy or medical device, and not yet evaluated with participants.</p>
 				</div>
-				<div class="hero-badges">
-					<span>Low-latency voice loop</span>
-					<span>Camera insights on demand</span>
-					<span>Choreographed dances &amp; emotions</span>
-					<span>Per-personality tools &amp; MCP Spaces</span>
-				</div>
-			</div>
-			<div class="hero-visual">
-				<div class="glass-card">
-					<img src="docs/assets/reachy_mini_dance.gif" alt="Reachy Mini dancing" class="hero-gif">
-					<p class="caption">Reachy Mini can move, dance, and emote while holding a natural conversation.</p>
-				</div>
+				<figure class="transcript" aria-label="Example of a timed, speaker-labeled transcript">
+					<figcaption>Transcript</figcaption>
+					<ol>
+						<li><span class="who person">P01</span><span class="time">10:02:14</span><q>I need a break.</q></li>
+						<li><span class="who reachy">Reachy</span><span class="time">10:02:17</span><q>Are you feeling good, or not good?</q></li>
+						<li><span class="who person">P01</span><span class="time">10:02:21</span><q>Not good.</q></li>
+						<li><span class="who reachy">Reachy</span><span class="time">10:02:24</span><q>Do you want to breathe with me, or listen to music?</q></li>
+					</ol>
+				</figure>
 			</div>
 		</div>
 	</header>
 
-	<section id="highlights" class="section features">
-		<div class="section-header">
-			<p class="eyebrow">What’s inside</p>
-			<h2>All-in-one conversational layer for your robot</h2>
-			<p class="intro">
-				The app blends realtime speech, vision, tools, and motion so Reachy Mini feels present.
-			</p>
-		</div>
-		<div class="feature-grid">
-			<div class="feature-card">
-				<span class="icon">🎤</span>
-				<h3>Natural voice chat</h3>
-				<p>Talk freely and get fast, high-quality replies powered by realtime models.</p>
-			</div>
-			<div class="feature-card">
-				<span class="icon">🎥</span>
-				<h3>Vision-aware replies</h3>
-				<p>Ask the camera tool to see what’s in front, track a face, or keep attention on whoever is speaking.</p>
-			</div>
-			<div class="feature-card">
-				<span class="icon">💃</span>
-				<h3>Expressive motion</h3>
-				<p>Queue dances, play recorded emotions while Reachy listens and talks.</p>
-			</div>
-			<div class="feature-card">
-				<span class="icon">🧠</span>
-				<h3>Personalities on demand</h3>
-				<p>Switch conversation styles and choose exactly which built-in or remote tools each personality can use.</p>
-			</div>
-			<div class="feature-card">
-				<span class="icon">🌐</span>
-				<h3>MCP Tool Spaces</h3>
-				<p>Install compatible Hugging Face Spaces once, then grant their tools independently to each personality.</p>
-			</div>
-		</div>
-	</section>
-
-	<section id="story" class="section story">
-		<div class="story-grid">
-			<div class="story-card">
-				<p class="eyebrow">How it feels</p>
-				<h3>From hello to helpful in seconds</h3>
-				<ul class="story-list">
-					<li><span>👋</span> Open the app and start chatting—Reachy greets you in character.</li>
-					<li><span>👀</span> Ask what it sees; it can peek through the camera or keep focus on your face.</li>
-					<li><span>🎭</span> Trigger emotions or dance breaks to keep the conversation lively.</li>
-					<li><span>📝</span> Follow along with live transcripts in the web UI or run audio-only from the console.</li>
-				</ul>
-			</div>
-			<div class="story-card secondary">
-				<p class="eyebrow">Where it shines</p>
-				<h3>Great for demos, teaching, and playful exploration</h3>
-				<p class="story-text">
-					Show off how Reachy Mini listens, responds, and moves in sync. Whether you’re guiding a class, hosting a booth, or experimenting at home, the app keeps the robot expressive without juggling scripts or joystick controls.
-				</p>
-				<div class="chips">
-					<span class="chip">Live conversation</span>
-					<span class="chip">Face tracking</span>
-					<span class="chip">Camera tool</span>
-					<span class="chip">Dance library</span>
-					<span class="chip">Profiles &amp; Tool Spaces</span>
+	<main>
+		<section class="section">
+			<div class="wrap">
+				<h2>What the app records</h2>
+				<p class="intro">Conversations work as in Pollen's conversation app. What this app adds is a research record of each one.</p>
+				<div class="cards">
+					<article class="card">
+						<h3>Timed transcripts</h3>
+						<p>Every utterance, by a person or by Reachy, with its start time, end time, and duration.</p>
+					</article>
+					<article class="card">
+						<h3>Speakers by voice</h3>
+						<p>Each person utterance gets a speaker ID found by voice: P01 for a participant, S01 for staff, V003 for a voice the app learned on its own.</p>
+					</article>
+					<article class="card">
+						<h3>Audio and events</h3>
+						<p>An audio clip of each person utterance, and robot actions and breaks on the same timeline.</p>
+					</article>
+					<article class="card">
+						<h3>Upload to Google Drive</h3>
+						<p>Files upload every five minutes to the Google Drive of the person who signs the robot in. No computer needs to be nearby.</p>
+					</article>
 				</div>
 			</div>
-		</div>
-	</section>
+		</section>
+
+		<section class="section tinted">
+			<div class="wrap">
+				<h2>Day Center mode</h2>
+				<p class="intro">Choose the <code>day_center</code> personality in the app's settings. It follows plain-language and accessibility guidance for adults with IDD.</p>
+				<div class="two-col">
+					<div class="card">
+						<h3>How Reachy talks</h3>
+						<ul>
+							<li>Short, literal sentences, and the same words for the same things.</li>
+							<li>Two-choice questions only, never yes/no questions.</li>
+							<li>More time to finish speaking before Reachy answers.</li>
+							<li>Single words and AAC messages count as full answers.</li>
+							<li>An AAC board (Open Board Format) with the same words.</li>
+						</ul>
+					</div>
+					<div class="card">
+						<h3>What it can do</h3>
+						<ul>
+							<li><strong>Take a Break:</strong> slow breathing, one calm song, or a movement game, with a chime at the start and at the end.</li>
+							<li><strong>What's Next:</strong> staff enter the weekly schedule and today's changes; anyone can ask what comes next.</li>
+							<li><strong>Daily Summary:</strong> totals for anyone; names only for staff voices.</li>
+						</ul>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="section">
+			<div class="wrap">
+				<h2>How it works</h2>
+				<img class="figure" src="docs/readme/how_it_works.svg" alt="Speech goes from the robot's microphone to a speech service that recognizes it, answers with a language model, and speaks the reply through Reachy. The app on the robot keeps a copy of the audio, identifies the speaker by voice, writes one record per utterance, and uploads the data folder to Google Drive every five minutes.">
+				<div class="notice">
+					<h3>This app records</h3>
+					<p>By default it saves what everyone near the robot says, an audio clip of each utterance, and a voiceprint of each voice. Whoever installs it is responsible for telling people and getting their consent. See <a href="https://github.com/renkaima/talk_with_reachy#privacy-and-responsibility" target="_blank" rel="noopener">Privacy and responsibility</a>.</p>
+				</div>
+			</div>
+		</section>
+	</main>
 
 	<footer class="footer">
-		<p>
-			Reachy Mini Conversation App by <a href="https://github.com/pollen-robotics" target="_blank" rel="noopener">Pollen Robotics</a>.
-			Explore more apps on <a href="https://huggingface.co/spaces/pollen-robotics/Reachy_Mini_Apps" target="_blank" rel="noopener">Hugging Face Spaces</a>.
-		</p>
+		<div class="wrap">
+			<p>Talk with Reachy is built on Pollen Robotics' <a href="https://github.com/pollen-robotics/reachy_mini_conversation_app" target="_blank" rel="noopener">reachy_mini_conversation_app</a> (Apache 2.0). It is not affiliated with or endorsed by Pollen Robotics; Reachy Mini is the robot it runs on.</p>
+			<p><a href="https://github.com/renkaima/talk_with_reachy" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/renkaima/talk_with_reachy/blob/main/STUDY_SETUP.md" target="_blank" rel="noopener">Study guide</a> · <a href="https://github.com/renkaima/talk_with_reachy/blob/main/LICENSE" target="_blank" rel="noopener">License</a></p>
+		</div>
 	</footer>
-
 </body>
 
 </html>

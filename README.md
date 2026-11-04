@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/readme/banner.svg" alt="Talk with Reachy: voice conversations with Reachy Mini, recorded for research" width="100%">
+  <img src="docs/readme/banner.svg" alt="Talk with Reachy: accessible voice conversations with Reachy Mini, recorded for research, with a Day Center mode for adults with intellectual and developmental disabilities" width="100%">
 </p>
 
 <p align="center">
@@ -12,7 +12,10 @@
   <a href="STUDY_SETUP.md">Study setup guide</a>
 </p>
 
-**Talk with Reachy** is an app for [Reachy Mini](https://github.com/pollen-robotics/reachy_mini), a small robot by Pollen Robotics. People talk with Reachy by voice, as they do in Pollen's official conversation app. While they talk, the app keeps a research record of the conversation: what was said, when it was said, and who said it, recognized by voice. The app was built for research studies.
+**Talk with Reachy** is a research app for [Reachy Mini](https://github.com/pollen-robotics/reachy_mini), a small robot by Pollen Robotics. People talk with Reachy by voice, and the app keeps a record of each conversation: what was said, when it was said, and who said it, recognized by voice. Its **Day Center mode** is designed for adults with intellectual and developmental disabilities (IDD): Reachy uses short, literal sentences, asks only two-choice questions, waits longer for people to finish speaking, and matches the words of an AAC board. The conversation itself works as in Pollen's conversation app, which this app is built on (see [Credits and license](#credits-and-license)).
+
+> [!NOTE]
+> **Research prototype.** Talk with Reachy is not a therapy or medical device, and its Day Center mode has not yet been evaluated with participants.
 
 A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_reachy_math)**, adds spoken math games for children aged 10 to 13 on top of everything described here.
 
@@ -27,7 +30,7 @@ A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_re
 - Reachy moves its head, shows emotions, and can dance, look through its camera, or check the weather.
 - Reachy recognizes who is speaking, uses their name, and remembers things about each person separately. It is instructed never to tell one person what it remembers about another.
 
-**In the Day Center profile** (choose it in the app's settings; see [STUDY_SETUP.md](STUDY_SETUP.md#day-center-profile))
+**In the Day Center mode** (choose the `day_center` personality in the app's settings; see [STUDY_SETUP.md](STUDY_SETUP.md#day-center-profile))
 
 - *Take a Break*: anyone, or staff on their behalf, can ask for a break. Reachy asks "good or not good?", offers two activities (slow breathing with its head and antennas, one minute of calm music, or a movement game), and asks "good or not good?" again afterwards.
 - *What's Next*: staff tell Reachy the weekly schedule and today's changes; anyone can ask what comes next.
