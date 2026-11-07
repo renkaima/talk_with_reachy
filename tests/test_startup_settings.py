@@ -1,6 +1,7 @@
 """Tests for persisted instance-local startup settings."""
 
 from talk_with_reachy.startup_settings import (
+    APP_DEFAULT_PROFILE,
     StartupSettings,
     read_startup_settings,
     write_startup_settings,
@@ -78,3 +79,33 @@ def test_load_startup_settings_into_runtime_preserves_inherited_env_without_save
 
     assert settings == StartupSettings()
     assert applied_profiles == []
+
+
+def test_app_starts_in_day_center_mode_until_another_personality_is_saved(monkeypatch, tmp_path) -> None:
+    """With nothing saved and no override, the app starts in the Day Center mode."""
+    applied_profiles: list[str | None] = []
+    monkeypatch.delenv("REACHY_MINI_CUSTOM_PROFILE", raising=False)
+    monkeypatch.setattr(
+        "talk_with_reachy.config.set_custom_profile",
+        lambda profile: applied_profiles.append(profile),
+    )
+
+    load_startup_settings_into_runtime(tmp_path)
+
+    assert APP_DEFAULT_PROFILE == "day_center"
+    assert applied_profiles == ["day_center"]
+
+
+def test_saved_general_personality_wins_over_the_day_center_mode(monkeypatch, tmp_path) -> None:
+    """Staff who save "default" as the startup personality get the general personality."""
+    write_startup_settings(tmp_path, profile="default", voice=None)
+    applied_profiles: list[str | None] = []
+    monkeypatch.delenv("REACHY_MINI_CUSTOM_PROFILE", raising=False)
+    monkeypatch.setattr(
+        "talk_with_reachy.config.set_custom_profile",
+        lambda profile: applied_profiles.append(profile),
+    )
+
+    load_startup_settings_into_runtime(tmp_path)
+
+    assert applied_profiles == ["default"]

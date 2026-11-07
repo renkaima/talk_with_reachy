@@ -11,6 +11,10 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 STARTUP_SETTINGS_FILENAME = "startup_settings.json"
+# The personality the app starts with until someone saves another one with "Set as default" in the settings page.
+# Talk with Reachy is built for the day center study, so it starts in the Day Center mode; choosing "default"
+# there and saving it is stored as "default", so the general personality can still be the startup choice.
+APP_DEFAULT_PROFILE = "day_center"
 
 
 @dataclass(frozen=True)
@@ -102,5 +106,5 @@ def load_startup_settings_into_runtime(instance_path: str | Path | None) -> Star
         if os.getenv("REACHY_MINI_CUSTOM_PROFILE"):
             return StartupSettings(voice=settings.voice)
 
-    set_custom_profile(settings.profile)
+    set_custom_profile(settings.profile or APP_DEFAULT_PROFILE)
     return settings

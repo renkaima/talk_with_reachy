@@ -19,6 +19,7 @@ from talk_with_reachy.config import HF_AVAILABLE_VOICES, config
 from talk_with_reachy.console import LocalStream
 from talk_with_reachy.streaming import AdditionalOutputs
 from talk_with_reachy.startup_settings import (
+    APP_DEFAULT_PROFILE,
     StartupSettings,
     load_startup_settings_into_runtime,
 )
@@ -741,7 +742,8 @@ def test_local_stream_persist_personality_clears_legacy_startup_env_overrides(tm
     settings = load_startup_settings_into_runtime(tmp_path)
 
     assert settings == StartupSettings(voice="Aiden")
-    assert applied_profiles == [None]
+    # Saving only a voice keeps the app's own startup personality.
+    assert applied_profiles == [APP_DEFAULT_PROFILE]
 
 
 def test_local_stream_launch_waits_for_missing_hf_target_without_starting_media(

@@ -27,10 +27,10 @@ A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_re
 **For the people who talk with Reachy**
 
 - They talk naturally, and Reachy answers aloud in one or two sentences.
-- Reachy moves its head, shows emotions, and can dance, look through its camera, or check the weather.
+- Reachy moves its head. In the general personality (`default` in the app's settings), it also shows emotions and can dance, look through its camera, or check the weather.
 - Reachy recognizes who is speaking, uses their name, and remembers things about each person separately. It is instructed never to tell one person what it remembers about another.
 
-**In the Day Center mode** (choose the `day_center` personality in the app's settings; see [STUDY_SETUP.md](STUDY_SETUP.md#day-center-profile))
+**In the Day Center mode** (the app starts in this mode; see [STUDY_SETUP.md](STUDY_SETUP.md#day-center-profile))
 
 - *Take a Break*: anyone, or staff on their behalf, can ask for a break. Reachy asks "good or not good?", offers two activities (slow breathing with its head and antennas, one minute of calm music, or a movement game), and asks "good or not good?" again afterwards.
 - *What's Next*: staff tell Reachy the weekly schedule and today's changes; anyone can ask what comes next.
