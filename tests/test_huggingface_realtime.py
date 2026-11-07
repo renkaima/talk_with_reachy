@@ -272,6 +272,85 @@ async def test_parallel_tool_calls_trigger_single_response(monkeypatch: Any) -> 
     assert create.await_count == 1
 
 
+@pytest.mark.asyncio
+async def test_a_reply_that_is_only_a_no_reply_tool_call_gets_one_spoken_follow_up(monkeypatch: Any) -> None:
+    """When Reachy answers unclear speech with only asked_to_repeat and no audio, the app asks it to speak once."""
+    monkeypatch.setattr(hf_mod.study_log, "record_event", lambda name, **fields: None)
+    monkeypatch.setattr(
+        hf_mod.core_tools, "get_tools", lambda: {"asked_to_repeat": SimpleNamespace(needs_response=False)}
+    )
+    handler = HuggingFaceRealtimeHandler(ToolDependencies(reachy_mini=MagicMock(), movement_manager=MagicMock()))
+    handler.connection = AsyncMock()
+    monkeypatch.setattr(handler, "_wait_for_response_done_before_tool_result", AsyncMock(return_value=True))
+    create = AsyncMock()
+    monkeypatch.setattr(handler, "_safe_response_create", create)
+
+    def _completed(call_id: str) -> ToolNotification:
+        return ToolNotification(
+            id=call_id,
+            tool_name="asked_to_repeat",
+            is_idle_tool_call=False,
+            status=ToolState.COMPLETED,
+            result={"saved": True},
+        )
+
+    # A reply with speech and the tool call: no follow-up.
+    await handler._handle_tool_result(_completed("call_spoken"))
+    assert create.await_count == 0
+    # Two silent replies in the same turn: one follow-up only, so Reachy cannot loop.
+    handler._silent_calls = {"call_silent_1", "call_silent_2"}
+    await handler._handle_tool_result(_completed("call_silent_1"))
+    await handler._handle_tool_result(_completed("call_silent_2"))
+    assert create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_silent_reply_is_noticed_from_the_realtime_events(monkeypatch: Any) -> None:
+    """A response with a tool call and no audio marks that call as silent; one with audio does not."""
+    one_second = base64.b64encode(np.zeros(HuggingFaceRealtimeHandler.SAMPLE_RATE, dtype=np.int16)).decode()
+    handler = _session_handler(
+        monkeypatch,
+        (
+            _FakeEvent("response.created"),
+            _FakeEvent("response.function_call_arguments.done", name="nope", arguments="{}", call_id="call_quiet"),
+            _FakeEvent("response.done"),
+            _FakeEvent("response.created"),
+            _FakeEvent("response.output_audio.delta", delta=one_second),
+            _FakeEvent("response.function_call_arguments.done", name="nope", arguments="{}", call_id="call_heard"),
+            _FakeEvent("response.done"),
+        ),
+    )
+    monkeypatch.setattr(type(handler.tool_manager), "start_tool", AsyncMock(return_value=SimpleNamespace(tool_id="t")))
+
+    await handler._run_realtime_session()
+
+    assert handler._silent_calls == {"call_quiet"}
+
+
+@pytest.mark.asyncio
+async def test_the_profile_speech_speed_slows_the_played_audio(monkeypatch: Any) -> None:
+    """At speech_speed 0.8, one second of speech plays (and is timed) as about 1.25 seconds."""
+    tone = (np.sin(np.arange(HuggingFaceRealtimeHandler.SAMPLE_RATE) / 5) * 8000).astype(np.int16)
+    handler = _session_handler(
+        monkeypatch,
+        (
+            _FakeEvent("response.created"),
+            _FakeEvent("response.output_audio.delta", delta=base64.b64encode(tone.tobytes()).decode()),
+            _FakeEvent("response.output_audio.done"),
+            _FakeEvent("response.done"),
+        ),
+    )
+    monkeypatch.setattr(hf_mod, "get_session_speech_speed", lambda: 0.8)
+    timed: list[int] = []
+    monkeypatch.setattr(handler.study, "assistant_audio", lambda samples, rate: timed.append(samples))
+
+    await handler._run_realtime_session()
+
+    played = sum(item[1].size for item in _drain(handler) if isinstance(item, tuple))
+    assert 1.21 < played / tone.size < 1.29
+    assert sum(timed) == played
+
+
 def test_handler_uses_hf_startup_voice_at_startup(monkeypatch: Any) -> None:
     """Hugging Face startup should restore persisted HF voices."""
     handler = HuggingFaceRealtimeHandler(

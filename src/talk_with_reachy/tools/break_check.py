@@ -37,4 +37,5 @@ class BreakCheck(Tool):
             "break_check", break_id=str(kwargs.get("break_id", "")), answer=answer, speaker_id=speaker_id
         )
         logger.info("Tool call: break_check answer=%s", answer[:80])
-        return {"saved": answer}
+        # Used only when the reply had no speech and the app asks the model to talk (see huggingface_realtime).
+        return {"saved": answer, "say": "Come back any time you need me."}

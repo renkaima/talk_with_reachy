@@ -85,6 +85,15 @@ def get_session_turn_silence_ms() -> int | None:
         return None
 
 
+def get_session_speech_speed() -> float:
+    """Return how fast the active profile plays Reachy's voice (1 means unchanged)."""
+    try:
+        return _active_profile().speech_speed
+    except (FileNotFoundError, ProfileFormatError) as exc:
+        logger.warning("Failed to load the active profile speech speed: %s", exc)
+        return 1.0
+
+
 def get_session_greeting_prompt() -> str:
     """Return the active profile greeting prompt or the app default."""
     try:

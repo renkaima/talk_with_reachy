@@ -44,6 +44,9 @@ def test_profile_document_round_trip(tmp_path: Path) -> None:
         ("+++\nschema_version = 1\ndefault_tools = []\n+++\n", "empty instruction body"),
         ("+++\nschema_version = 1\ndefault_tools = []\nturn_silence_ms = 20\n+++\nPrompt\n", "turn_silence_ms"),
         ("+++\nschema_version = 1\ndefault_tools = []\nturn_silence_ms = '1s'\n+++\nPrompt\n", "turn_silence_ms"),
+        ("+++\nschema_version = 1\ndefault_tools = []\nspeech_speed = 0.3\n+++\nPrompt\n", "speech_speed"),
+        ("+++\nschema_version = 1\ndefault_tools = []\nspeech_speed = 1.5\n+++\nPrompt\n", "speech_speed"),
+        ("+++\nschema_version = 1\ndefault_tools = []\nspeech_speed = 'slow'\n+++\nPrompt\n", "speech_speed"),
     ],
 )
 def test_invalid_profile_document_is_rejected(tmp_path: Path, document: str, error: str) -> None:
@@ -63,6 +66,15 @@ def test_day_center_profile_waits_longer_for_the_end_of_a_turn() -> None:
 
     assert day_center.turn_silence_ms == 1200
     assert default.turn_silence_ms is None
+
+
+def test_day_center_profile_speaks_more_slowly() -> None:
+    """The Day Center profile plays Reachy's voice at 70% speed; other profiles leave it unchanged."""
+    day_center = read_profile_from_directory("day_center", DEFAULT_PROFILES_DIRECTORY / "day_center")
+    default = read_profile_from_directory("default", DEFAULT_PROFILES_DIRECTORY / "default")
+
+    assert day_center.speech_speed == 0.7
+    assert default.speech_speed == 1.0
 
 
 def test_profile_listing_requires_profile_document(tmp_path: Path) -> None:

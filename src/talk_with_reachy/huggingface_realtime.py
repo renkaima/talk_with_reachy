@@ -26,6 +26,7 @@ from openai.types.realtime import (
 from websockets.exceptions import ConnectionClosedError
 from openai.types.realtime.realtime_audio_input_turn_detection_param import ServerVad
 
+from talk_with_reachy import study_log, slow_speech
 from talk_with_reachy.tools import core_tools
 from talk_with_reachy.config import (
     HF_LOCAL_CONNECTION_MODE,
@@ -40,6 +41,7 @@ from talk_with_reachy.config import (
 from talk_with_reachy.prompts import (
     get_session_voice,
     get_session_instructions,
+    get_session_speech_speed,
     get_session_greeting_prompt,
     get_session_turn_silence_ms,
 )
@@ -170,6 +172,15 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         # take_break use this to wait until Reachy has finished saying what will happen.
         self._speech_end_mono = 0.0
         deps.seconds_until_reachy_is_quiet = self.seconds_until_reachy_is_quiet
+        # Plays Reachy's voice more slowly when the profile asks for it (speech_speed); set per session.
+        self._slower = slow_speech.SpeechSlower(1.0)
+        # A reply that is only a tool call that asks for no follow-up (asked_to_repeat, break_check) would
+        # leave Reachy silent, for example when it did not understand someone. The app notices that the
+        # reply had no audio and asks the model once to say its reply.
+        self._response_spoke = False
+        self._calls_this_response: set[str] = set()
+        self._silent_calls: set[str] = set()
+        self._silent_retry_used = False
 
         # Study data: transcripts with timing, audio clips, voice ID, and events.
         self.study = StudyRecorder(notify_model=self._send_system_note)
@@ -257,6 +268,14 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
             tools=to_realtime_tools_config(tool_specs),
             tool_choice="auto",
         )
+
+    async def _play_reachy_audio(self, pcm: NDArray[np.int16]) -> None:
+        """Queue Reachy's (possibly slowed) audio for playback, and count it in the study and speech timing."""
+        if pcm.size == 0:
+            return
+        self.study.assistant_audio(pcm.size, self.SAMPLE_RATE)
+        self._speech_end_mono = max(self._speech_end_mono, time.monotonic()) + pcm.size / self.SAMPLE_RATE
+        await self.output_queue.put((self.SAMPLE_RATE, pcm.reshape(1, -1)))
 
     def seconds_until_reachy_is_quiet(self) -> float:
         """Seconds until Reachy's speech has finished playing; a short wait while a response is still arriving."""
@@ -721,7 +740,19 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
             tool = core_tools.get_tools().get(completed_tool.tool_name)
             # Always surface errors, skip the spoken follow-up for tools that opt out.
-            if model_result_submitted and (completed_tool.error is not None or tool is None or tool.needs_response):
+            needs_response = completed_tool.error is not None or tool is None or tool.needs_response
+            silent_reply = isinstance(completed_tool.id, str) and completed_tool.id in self._silent_calls
+            if isinstance(completed_tool.id, str):
+                self._silent_calls.discard(completed_tool.id)
+            if model_result_submitted and not needs_response and silent_reply and not self._silent_retry_used:
+                logger.info(
+                    "Tool '%s' was the whole reply, with no speech; asking the model to speak",
+                    completed_tool.tool_name,
+                )
+                study_log.record_event("silent_reply_retried", tool=completed_tool.tool_name)
+                self._silent_retry_used = True
+                needs_response = True
+            if model_result_submitted and needs_response:
                 self._tool_batch_needs_response = True
 
             # Parallel tool calls in one turn: respond once every result is in, not per tool.
@@ -748,6 +779,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
             try:
                 session_config = self._get_session_config(tool_specs)
                 await conn.session.update(session=session_config)
+                self._slower = slow_speech.SpeechSlower(get_session_speech_speed())
                 logger.info(
                     "Realtime session initialized with profile=%r voice=%r",
                     getattr(config, "REACHY_MINI_CUSTOM_PROFILE", None),
@@ -793,6 +825,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         if self._clear_queue:
                             self._clear_queue()
                             self._speech_end_mono = time.monotonic()
+                        self._slower.reset()
+                        self._silent_retry_used = False
                         self.deps.movement_manager.set_listening(True)
                         logger.debug("User speech started")
 
@@ -805,6 +839,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         logger.debug("User speech stopped - server will auto-commit with VAD")
 
                     if event.type == "response.output_audio.done":
+                        await self._play_reachy_audio(self._slower.flush())
                         self.deps.movement_manager.set_speaking(False)
                         logger.debug("response completed")
 
@@ -815,6 +850,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         logger.debug("response text done: %s", event.text)
 
                     if event.type == "response.created":
+                        self._slower.reset()  # nothing left over from a response cut off by a lost connection
+                        self._response_spoke = False
+                        self._calls_this_response = set()
                         self.study.response_created()
                         self._mark_activity("response_created")
                         self.deps.movement_manager.set_speaking(True)
@@ -830,6 +868,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         # Doesn't mean the audio is done playing
                         # Resume tracking for responses that emit no audio (text-only / tool-only).
                         self.deps.movement_manager.set_speaking(False)
+                        if not self._response_spoke:
+                            self._silent_calls |= self._calls_this_response
                         self._response_done_event.set()
                         self._response_started_or_rejected_event.set()
                         self.study.response_done()
@@ -893,27 +933,20 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                     if event.type == "response.output_audio.delta":
                         decoded_pcm_bytes = base64.b64decode(event.delta)
                         decoded_pcm = np.frombuffer(decoded_pcm_bytes, dtype=np.int16).reshape(1, -1)
-                        self.study.assistant_audio(decoded_pcm.size, self.SAMPLE_RATE)
-                        self._speech_end_mono = (
-                            max(self._speech_end_mono, time.monotonic()) + decoded_pcm.size / self.SAMPLE_RATE
-                        )
+                        self._response_spoke = True
                         self._mark_activity("assistant_audio_delta")
                         if self._turn_user_done_at is not None and self._turn_first_audio_at is None:
                             self._turn_first_audio_at = time.perf_counter()
                             delta_ms = (self._turn_first_audio_at - self._turn_user_done_at) * 1000
                             logger.info("Turn latency: first audio delta %.0f ms after user transcript", delta_ms)
-                        await self.output_queue.put(
-                            (
-                                self.SAMPLE_RATE,
-                                decoded_pcm,
-                            ),
-                        )
+                        await self._play_reachy_audio(self._slower.process(decoded_pcm))
                     # ---- tool-calling plumbing ----
                     if event.type == "response.function_call_arguments.done":
                         self._mark_activity("tool_call_received")
                         tool_name = getattr(event, "name", None)
                         args_json_str = getattr(event, "arguments", None)
                         call_id: str = str(getattr(event, "call_id", uuid.uuid4()))
+                        self._calls_this_response.add(call_id)
 
                         logger.info(
                             "Tool call received — tool_name=%r, call_id=%s, args=%s",

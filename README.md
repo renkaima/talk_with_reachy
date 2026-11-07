@@ -36,7 +36,9 @@ A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_re
 - *What's Next*: staff tell Reachy the weekly schedule and today's changes; anyone can ask what comes next.
 - *Daily Summary*: anyone can ask how the day went and hears totals; staff voices also hear who took each break and can add notes.
 - Reachy asks only two-choice questions, treats short or incomplete answers as real requests, and logs each time it asks someone to repeat.
+- Reachy talks more slowly (70% of the speech service's speed, at the same pitch) and uses everyday words.
 - Reachy waits longer before answering (1.2 seconds of silence instead of the speech server's 64 ms), so people who pause mid-sentence can finish.
+- When Reachy does not understand someone, it always says so ("Sorry. Please say it again.") instead of staying silent.
 - An AAC board with the same words Reachy uses (`deploy/aac/talk_with_reachy.obf`) can be imported into Cboard or other AAC apps.
 
 **For the researcher**

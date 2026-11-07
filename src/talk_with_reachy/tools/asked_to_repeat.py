@@ -30,4 +30,5 @@ class AskedToRepeat(Tool):
         speaker_id, _ = day_center.current_speaker()
         study_log.record_event("asked_to_repeat", heard=str(kwargs.get("heard", ""))[:200], speaker_id=speaker_id)
         logger.info("Tool call: asked_to_repeat speaker=%s", speaker_id)
-        return {"saved": True}
+        # Used only when the reply had no speech and the app asks the model to talk (see huggingface_realtime).
+        return {"saved": True, "say": "Sorry. Please say it again.", "then": "Ask one two-choice question."}
