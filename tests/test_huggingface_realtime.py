@@ -341,6 +341,7 @@ async def test_the_profile_speech_speed_slows_the_played_audio(monkeypatch: Any)
         ),
     )
     monkeypatch.setattr(hf_mod, "get_session_speech_speed", lambda: 0.8)
+    monkeypatch.setattr(hf_mod, "get_session_added_pause_ms", lambda: 0)
     timed: list[int] = []
     monkeypatch.setattr(handler.study, "assistant_audio", lambda samples, rate: timed.append(samples))
 

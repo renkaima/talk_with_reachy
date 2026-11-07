@@ -121,7 +121,8 @@ class TakeBreak(Tool):
     name = "take_break"
     description = (
         "Lead a short break once the person has chosen one of two activities. "
-        "breathe: six slow breaths (one minute); your head rises and your antennas stand up on each in-breath. "
+        "breathe: six slow breaths (one minute); your head rises and your antennas stand up on each in-breath, "
+        "and people can watch or breathe with you. "
         "music: one calm song (one minute); your antennas fold down slowly to show how much is left. "
         "You cannot hear anyone while it plays, so it cannot be stopped. "
         "move: one short movement game (about 35 seconds) that anyone nearby can copy. "
@@ -143,8 +144,8 @@ class TakeBreak(Tool):
             },
             "feeling": {
                 "type": "string",
-                "enum": ["good", "not good", "unclear"],
-                "description": "Their answer to 'Are you feeling good or not good?'",
+                "enum": ["good", "not good", "don't know", "unclear"],
+                "description": "Their answer to 'Are you feeling good, or not good?'",
             },
         },
         "required": ["activity", "started_by"],

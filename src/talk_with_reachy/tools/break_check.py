@@ -22,7 +22,7 @@ class BreakCheck(Tool):
         "properties": {
             "break_id": {"type": "string", "description": "The break_id that take_break returned."},
             # The same answers as take_break's 'feeling', so each break has a before and an after.
-            "answer": {"type": "string", "enum": ["good", "not good", "unclear", "no answer"]},
+            "answer": {"type": "string", "enum": ["good", "not good", "don't know", "unclear", "no answer"]},
         },
         "required": ["break_id", "answer"],
     }
@@ -38,4 +38,6 @@ class BreakCheck(Tool):
         )
         logger.info("Tool call: break_check answer=%s", answer[:80])
         # Used only when the reply had no speech and the app asks the model to talk (see huggingface_realtime).
+        if answer == "not good":
+            return {"saved": answer, "say": "Do you want one more break, or help from staff?"}
         return {"saved": answer, "say": "Come back any time you need me."}

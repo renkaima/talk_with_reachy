@@ -3,7 +3,7 @@
   "id": "talk_with_reachy",
   "locale": "en",
   "name": "Talk with Reachy",
-  "description_html": "The words Reachy understands in the Day Center profile. Each button speaks a short phrase aloud for Reachy to hear. Row 1: requests. Row 2: answers to Reachy's questions. Row 3: break activities.",
+  "description_html": "The words Reachy understands in the Day Center profile. Each button speaks a short phrase aloud for Reachy to hear. Row 1: requests. Row 2: answers to Reachy's questions. Row 3: break activities. The empty cell is left free for a button the day center adds.",
   "license": {
     "type": "CC0",
     "copyright_notice_url": "https://creativecommons.org/publicdomain/zero/1.0/"
@@ -38,6 +38,13 @@
       "border_color": "rgb(80, 80, 80)"
     },
     {
+      "id": "quieter",
+      "label": "Quieter",
+      "vocalization": "Reachy, please be quieter.",
+      "background_color": "rgb(204, 229, 255)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
       "id": "good",
       "label": "Good",
       "vocalization": "Good.",
@@ -62,6 +69,13 @@
       "id": "thanks",
       "label": "Thank you",
       "vocalization": "Thank you.",
+      "background_color": "rgb(255, 242, 204)",
+      "border_color": "rgb(80, 80, 80)"
+    },
+    {
+      "id": "dont_know",
+      "label": "I don't know",
+      "vocalization": "I don't know.",
       "background_color": "rgb(255, 242, 204)",
       "border_color": "rgb(80, 80, 80)"
     },
@@ -96,25 +110,28 @@
   ],
   "grid": {
     "rows": 3,
-    "columns": 4,
+    "columns": 5,
     "order": [
       [
         "break",
         "next",
         "stop",
-        "help"
+        "help",
+        "quieter"
       ],
       [
         "good",
         "not_good",
         "again",
-        "thanks"
+        "thanks",
+        "dont_know"
       ],
       [
         "breathe",
         "music",
         "move",
-        "else"
+        "else",
+        null
       ]
     ]
   },
