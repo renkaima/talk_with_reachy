@@ -1,66 +1,63 @@
 """Slow down Reachy's voice without changing its pitch.
 
-The speech service has no speed setting, so the app stretches the audio it receives before playing it. A
-profile sets the speed with ``speech_speed`` (the Day Center profile uses 0.55). The stretch uses WSOLA
-(Verhelst & Roelands, 1993) from the MIT-licensed audiotsm package. The same code runs in the sister app
-Talk with Reachy Math.
+The speech service has no speed setting, so the app slows the audio it receives before playing it. A profile
+sets the speed with ``speech_speed`` (the Day Center profile uses 0.55). The slowing uses Sonic (Bill Cox), a
+pitch-synchronous method made for speech: it repeats whole pitch periods of the voice, so slowed vowels stay
+smooth. It comes from the Apache-2.0 libsonic package, a Rust port that matches sonic.c sample for sample.
+Version 1.3.5 used WSOLA from audiotsm instead; at 55% speed it made the voice sound choppy.
 """
 
 from __future__ import annotations
 
 import numpy as np
-from audiotsm import wsola
+from libsonic import SonicStream
 from numpy.typing import NDArray
-from audiotsm.io.array import ArrayReader, ArrayWriter
 
 
-# audiotsm holds back the last part of the input until more arrives; at the end of a response, this much
-# silence pushes it out (WSOLA's frame length plus its tolerance, in samples, with room to spare).
-_END_PADDING = 2048
-
-
-def _to_int16(samples: NDArray[np.float64]) -> NDArray[np.int16]:
-    return np.clip(np.round(samples.reshape(-1) * 32768.0), -32768, 32767).astype(np.int16)
+def _to_int16(samples: list[float]) -> NDArray[np.int16]:
+    return np.clip(np.round(np.asarray(samples, dtype=np.float64) * 32768.0), -32768, 32767).astype(np.int16)
 
 
 class SpeechSlower:
-    """Stretch one response's audio as it streams in, chunk by chunk.
+    """Slow one response's audio as it streams in, chunk by chunk.
 
     Call ``process`` for each chunk, ``flush`` when the response's audio is done, and
     ``reset`` when someone interrupts (the rest of the response is not played).
     """
 
-    def __init__(self, factor: float) -> None:
-        """Slow speech to ``factor`` times its speed; 1 or more leaves it unchanged."""
+    def __init__(self, factor: float, rate: int = 16000) -> None:
+        """Slow speech to ``factor`` times its speed (1 or more leaves it unchanged); ``rate`` is the sample rate."""
         self.factor = factor
-        self._tsm = wsola(1, speed=factor) if factor < 1.0 else None
+        self.rate = rate
+        self._stream = self._new_stream() if factor < 1.0 else None
+
+    def _new_stream(self) -> SonicStream:
+        stream = SonicStream(self.rate, 1)
+        stream.set_speed(self.factor)
+        return stream
+
+    def _read_available(self) -> NDArray[np.int16]:
+        assert self._stream is not None
+        frames = self._stream.available_frames()
+        return _to_int16(self._stream.read(frames)) if frames else np.zeros(0, dtype=np.int16)
 
     def process(self, pcm: NDArray[np.int16]) -> NDArray[np.int16]:
         """Return the slowed audio for one chunk of 16-bit mono samples (it can be shorter or empty)."""
-        if self._tsm is None:
+        if self._stream is None:
             return pcm.reshape(-1)
-        reader = ArrayReader(pcm.reshape(1, -1).astype(np.float64) / 32768.0)
-        writer = ArrayWriter(1)
-        while True:
-            self._tsm.read_from(reader)
-            _, finished = self._tsm.write_to(writer)
-            if finished and reader.empty:
-                break
-        return _to_int16(writer.data)
+        self._stream.write((pcm.reshape(-1).astype(np.float32) / 32768.0).tolist())
+        return self._read_available()
 
     def flush(self) -> NDArray[np.int16]:
         """Return the audio still held back at the end of a response, and get ready for the next one."""
-        if self._tsm is None:
+        if self._stream is None:
             return np.zeros(0, dtype=np.int16)
-        tail = self.process(np.zeros(_END_PADDING, dtype=np.int16))
-        writer = ArrayWriter(1)
-        finished = False
-        while not finished:
-            _, finished = self._tsm.flush_to(writer)
-        self._tsm.clear()
-        return np.trim_zeros(np.concatenate([tail, _to_int16(writer.data)]), "b")  # drop the added silence
+        self._stream.flush()
+        tail = self._read_available()
+        self._stream = self._new_stream()
+        return tail
 
     def reset(self) -> None:
         """Drop any held-back audio, for example when someone starts talking."""
-        if self._tsm is not None:
-            self._tsm.clear()
+        if self._stream is not None:
+            self._stream = self._new_stream()

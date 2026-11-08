@@ -277,19 +277,6 @@ wheels = [
 ]
 
 [[package]]
-name = "audiotsm"
-version = "0.1.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f8/b8/721a9c613641c938a6fb9c7c3efb173b7f77b519de066e9cd2eeb27c3289/audiotsm-0.1.2.tar.gz", hash = "sha256:8870af28fad0a76cac1d2bb2b55e7eac6ad5d1ad5416293eb16120dece6c0281", size = 6558897, upload-time = "2017-09-21T20:26:13.164Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/7d/a214ff529fed9501452252d24231f54ab5afe8691b4f81e5d07d204070b4/audiotsm-0.1.2-py2.py3-none-any.whl", hash = "sha256:f6041b2a38326d1449ca84218c258c54ee126868fe864e12a17e425365ec93be", size = 32172, upload-time = "2017-09-21T20:26:05.689Z" },
-]
-
-[[package]]
 name = "certifi"
 version = "2026.6.17"
 source = { registry = "https://pypi.org/simple" }
@@ -1399,6 +1386,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/99/6203ce619dee940d6bfbe099ec3fe4be00a68e9d60f70abf906cf124fe66/librt-0.13.0-cp314-cp314t-win32.whl", hash = "sha256:5fdcf34f86de8fb66d7dc7589f96ba91c4aa46671200d400e6fd6f109a483f18", size = 104357, upload-time = "2026-07-08T12:26:09.828Z" },
     { url = "https://files.pythonhosted.org/packages/52/dd/843b6314087c41657c7036d7914d8f294bdf9b580aa8513ea0588c8e9a3d/librt-0.13.0-cp314-cp314t-win_amd64.whl", hash = "sha256:260c33e92263fa629b4f6d3c51967a1c2158fe6c33237aaa3ebeac586b085259", size = 126998, upload-time = "2026-07-08T12:26:10.975Z" },
     { url = "https://files.pythonhosted.org/packages/5f/5d/3dcec2884ba1b0806d1408612555c38dd5d68e90156b59f75f6e36435c3a/librt-0.13.0-cp314-cp314t-win_arm64.whl", hash = "sha256:2f281549a4c52ac7bb97997f14353f8bd0e53a34ca0dad1c905cfd0b4a58ae99", size = 110771, upload-time = "2026-07-08T12:26:12.303Z" },
+]
+
+[[package]]
+name = "libsonic"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/a1/aa8c7435758e3b349cf33cfd3d7171a210e4ec89e9d5fb947a6ff70c07a0/libsonic-0.1.0.tar.gz", hash = "sha256:6283fb27c9ab4ddeb98c179728a42ae07919a8f994c7e8cd7d652bd162481664", size = 49521, upload-time = "2026-10-14T10:41:02.762Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/8d/724abf9de916374443b0ff399b3e81279b6f0be90042280ae83e21389bb2/libsonic-0.1.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:5e4545b80f669a9b93172ea81d7eec008ec0aa52210f4746fa6aed77a879ea98", size = 217538, upload-time = "2026-10-14T10:40:58.665Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/d7/b4a11855256569162cb52011a25aedd9b3c1791159d2b6aff50ec456cb4c/libsonic-0.1.0-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:eb1a853f3a3c8e552313b81c84cd49aa79aca287d68d5895f1873cdb3251fc5d", size = 235029, upload-time = "2026-10-14T10:40:59.63Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/fd/a3b256843fb3a5d60425c812429ceb5152d62238627d1c77e38bd19d389e/libsonic-0.1.0-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1dca410d72d6c9c194943d9d8ea31d901d3e0e111de0e3b8d49dcadad1d1b3b0", size = 236029, upload-time = "2026-10-14T10:41:00.704Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/0b/f02c968d5abf08942fbfa2aef71ae7269ab40b6fed9ce29c05428863125c/libsonic-0.1.0-cp311-abi3-win_amd64.whl", hash = "sha256:f52c9d6c99fcf292aa1aa3667923d4ea68fddef2e3a6b34b856190ae8f2294fb", size = 128966, upload-time = "2026-10-14T10:41:01.884Z" },
 ]
 
 [[package]]
@@ -3234,13 +3233,13 @@ wheels = [
 
 [[package]]
 name = "talk-with-reachy"
-version = "1.3.5"
+version = "1.3.6"
 source = { editable = "." }
 dependencies = [
-    { name = "audiotsm" },
     { name = "httpx" },
     { name = "httpx2" },
     { name = "huggingface-hub" },
+    { name = "libsonic" },
     { name = "mcp" },
     { name = "mcp-types" },
     { name = "msal" },
@@ -3265,10 +3264,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "audiotsm", specifier = ">=0.1.2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx2", specifier = ">=2.5.0" },
     { name = "huggingface-hub", specifier = ">=1.17.0" },
+    { name = "libsonic", specifier = ">=0.1.0" },
     { name = "mcp", specifier = ">=2.0,<3" },
     { name = "mcp-types", specifier = ">=2.0,<3" },
     { name = "msal", specifier = ">=1.31" },

@@ -173,7 +173,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         self._speech_end_mono = 0.0
         deps.seconds_until_reachy_is_quiet = self.seconds_until_reachy_is_quiet
         # Plays Reachy's voice more slowly when the profile asks for it (speech_speed); set per session.
-        self._slower = slow_speech.SpeechSlower(1.0)
+        self._slower = slow_speech.SpeechSlower(1.0, rate=self.SAMPLE_RATE)
         # A reply that is only a tool call that asks for no follow-up (asked_to_repeat, break_check) would
         # leave Reachy silent, for example when it did not understand someone. The app notices that the
         # reply had no audio and asks the model once to say its reply.
@@ -779,7 +779,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
             try:
                 session_config = self._get_session_config(tool_specs)
                 await conn.session.update(session=session_config)
-                self._slower = slow_speech.SpeechSlower(get_session_speech_speed())
+                self._slower = slow_speech.SpeechSlower(get_session_speech_speed(), rate=self.SAMPLE_RATE)
                 logger.info(
                     "Realtime session initialized with profile=%r voice=%r",
                     getattr(config, "REACHY_MINI_CUSTOM_PROFILE", None),

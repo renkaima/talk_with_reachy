@@ -27,11 +27,12 @@ def test_slowed_speech_lasts_longer_and_keeps_its_pitch() -> None:
 
 
 def test_streaming_in_small_chunks_gives_the_same_audio_and_keeps_the_end() -> None:
-    """Chunks of any size give the same result as one piece, and the last word is not cut off."""
+    """Chunks of any size give the same audio as one piece (within rounding), and the last word is not cut off."""
     tone = _tone(0.5)
     whole = _slow([tone])
     pieces = _slow(np.array_split(tone, 37))
-    np.testing.assert_array_equal(whole, pieces)
+    assert whole.size == pieces.size
+    np.testing.assert_allclose(whole, pieces, atol=8)
     assert np.abs(whole[-160:]).max() > 4000
 
 

@@ -68,12 +68,12 @@ def test_day_center_profile_waits_longer_for_the_end_of_a_turn() -> None:
     assert default.turn_silence_ms is None
 
 
-def test_day_center_profile_speaks_more_slowly_in_a_steady_voice() -> None:
-    """The Day Center profile plays the Ryan voice at 55% speed; other profiles keep the default voice and speed."""
+def test_day_center_profile_speaks_more_slowly_in_the_default_voice() -> None:
+    """The Day Center profile plays the service's default voice at 55% speed; other profiles keep the default speed."""
     day_center = read_profile_from_directory("day_center", DEFAULT_PROFILES_DIRECTORY / "day_center")
     default = read_profile_from_directory("default", DEFAULT_PROFILES_DIRECTORY / "default")
 
-    assert (day_center.speech_speed, day_center.voice) == (0.55, "Ryan")
+    assert (day_center.speech_speed, day_center.voice) == (0.55, None)
     assert (default.speech_speed, default.voice) == (1.0, None)
 
 

@@ -37,7 +37,7 @@ A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_re
 - *Daily Summary*: anyone can ask how the day went and hears totals; staff voices also hear who took each break and can add notes.
 - The person leads: Reachy greets, answers what was said, and waits. It brings up a break or what is next only when someone asks for help, asks what it can do, or says a word such as "tired". When someone does not understand Reachy, it says the same thing again in simpler words.
 - When Reachy asks something, it offers two choices. It treats short or incomplete answers as real requests, and logs each time it asks someone to repeat.
-- Reachy talks more slowly (55% of the speech service's speed, at the same pitch, in the Ryan voice) and uses everyday words.
+- Reachy talks more slowly (55% of the speech service's speed, at the same pitch, slowed with Sonic, a method made for speech) and uses everyday words.
 - Reachy does not stare or move at random: it follows a face with its head only when someone asks, and stays still when the room is quiet. When someone says "too loud", it offers to be quieter or to start a break.
 - Reachy waits longer before answering (1.2 seconds of silence instead of the speech server's 64 ms), so people who pause mid-sentence can finish.
 - When Reachy does not understand someone, it always says so ("Sorry. Please say it again.") instead of staying silent.
@@ -141,5 +141,6 @@ The app is provided "as is", without warranty of any kind, under the [Apache 2.0
 - Built on Pollen Robotics' [reachy_mini_conversation_app](https://github.com/pollen-robotics/reachy_mini_conversation_app) (Apache 2.0). The changes are the commits after upstream commit `5eb39ed`. This app is not affiliated with or endorsed by Pollen Robotics; "Reachy Mini" names the robot that the app runs on.
 - The calm music for *Take a Break* is by Kevin MacLeod, released into the public domain on FreePD.com (see `src/talk_with_reachy/sounds/CREDITS.txt`).
 - Voice ID uses NVIDIA NeMo's TitaNet-S speaker model through [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
+- Reachy's voice is slowed with [Sonic](https://github.com/waywardgeek/sonic) by Bill Cox, through the Apache-2.0 [libsonic](https://github.com/ZirekHQ/libsonic-rs) package.
 - Maintained by Renkai Ma ([@renkaima](https://github.com/renkaima)).
 - License: Apache 2.0, see [LICENSE](LICENSE).

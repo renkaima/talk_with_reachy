@@ -19,11 +19,8 @@ default_tools = [
 turn_silence_ms = 1200
 # Play Reachy's voice at 55% of the speech service's speed (same pitch), so it is easier to follow by ear. In a
 # simulation test on 2026-11-07 the service spoke at a median of about 233 words per minute; 55% gives about 130.
-# Chosen after a test at 80% (with added pauses) still sounded too fast.
+# Chosen after a test at 80% (with added pauses) still sounded too fast. The voice is the speech service's default.
 speech_speed = 0.55
-# Ryan instead of the server's default voice (Aiden), after a test in which Aiden's pitch on single words, such as
-# "break", rose and fell in a way that sounded uneven.
-voice = "Ryan"
 greeting = "Start the conversation now. Say exactly: \"Hi, I am Reachy.\" Then wait for the person to talk. Use these same words every time."
 +++
 
