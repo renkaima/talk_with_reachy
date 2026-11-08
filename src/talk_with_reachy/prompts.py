@@ -94,15 +94,6 @@ def get_session_speech_speed() -> float:
         return 1.0
 
 
-def get_session_added_pause_ms() -> int:
-    """Return the silence the active profile adds to each pause in Reachy's voice (0 means none)."""
-    try:
-        return _active_profile().added_pause_ms
-    except (FileNotFoundError, ProfileFormatError) as exc:
-        logger.warning("Failed to load the active profile added pause: %s", exc)
-        return 0
-
-
 def get_session_greeting_prompt() -> str:
     """Return the active profile greeting prompt or the app default."""
     try:

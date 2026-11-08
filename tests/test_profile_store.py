@@ -47,8 +47,6 @@ def test_profile_document_round_trip(tmp_path: Path) -> None:
         ("+++\nschema_version = 1\ndefault_tools = []\nspeech_speed = 0.3\n+++\nPrompt\n", "speech_speed"),
         ("+++\nschema_version = 1\ndefault_tools = []\nspeech_speed = 1.5\n+++\nPrompt\n", "speech_speed"),
         ("+++\nschema_version = 1\ndefault_tools = []\nspeech_speed = 'slow'\n+++\nPrompt\n", "speech_speed"),
-        ("+++\nschema_version = 1\ndefault_tools = []\nadded_pause_ms = -1\n+++\nPrompt\n", "added_pause_ms"),
-        ("+++\nschema_version = 1\ndefault_tools = []\nadded_pause_ms = 0.3\n+++\nPrompt\n", "added_pause_ms"),
     ],
 )
 def test_invalid_profile_document_is_rejected(tmp_path: Path, document: str, error: str) -> None:
@@ -70,13 +68,13 @@ def test_day_center_profile_waits_longer_for_the_end_of_a_turn() -> None:
     assert default.turn_silence_ms is None
 
 
-def test_day_center_profile_speaks_more_slowly_with_longer_pauses() -> None:
-    """The Day Center profile plays Reachy's voice at 80% speed with 300 ms added to each pause; others do not."""
+def test_day_center_profile_speaks_more_slowly_in_a_steady_voice() -> None:
+    """The Day Center profile plays the Ryan voice at 55% speed; other profiles keep the default voice and speed."""
     day_center = read_profile_from_directory("day_center", DEFAULT_PROFILES_DIRECTORY / "day_center")
     default = read_profile_from_directory("default", DEFAULT_PROFILES_DIRECTORY / "default")
 
-    assert (day_center.speech_speed, day_center.added_pause_ms) == (0.8, 300)
-    assert (default.speech_speed, default.added_pause_ms) == (1.0, 0)
+    assert (day_center.speech_speed, day_center.voice) == (0.55, "Ryan")
+    assert (default.speech_speed, default.voice) == (1.0, None)
 
 
 def test_day_center_profile_has_no_random_head_movements() -> None:

@@ -32,7 +32,6 @@ _PROFILE_METADATA_FIELDS = {
     "hidden",
     "turn_silence_ms",
     "speech_speed",
-    "added_pause_ms",
 }
 _STORE_LOCK = threading.Lock()
 
@@ -54,8 +53,6 @@ class ProfileDefinition:
     turn_silence_ms: int | None = None
     # How fast Reachy's voice plays, from 0.5 to 1 (1, the default, plays the speech service's audio unchanged).
     speech_speed: float = 1.0
-    # Silence added to each pause between Reachy's phrases and sentences, from 0 (the default) to 1000 ms.
-    added_pause_ms: int = 0
 
 
 def canonical_profile_name(profile: str | None) -> str:
@@ -139,9 +136,6 @@ def _parse_profile_document(source_path: Path) -> ProfileDefinition:
     speech_speed = metadata.get("speech_speed", 1.0)
     if not isinstance(speech_speed, (int, float)) or isinstance(speech_speed, bool) or not 0.5 <= speech_speed <= 1.0:
         raise ProfileFormatError(f"Invalid speech_speed in {source_path}: expected a number from 0.5 to 1.")
-    added_pause_ms = metadata.get("added_pause_ms", 0)
-    if not isinstance(added_pause_ms, int) or isinstance(added_pause_ms, bool) or not 0 <= added_pause_ms <= 1000:
-        raise ProfileFormatError(f"Invalid added_pause_ms in {source_path}: expected milliseconds from 0 to 1000.")
 
     instructions = "\n".join(lines[closing_index + 1 :]).strip()
     if not instructions:
@@ -154,7 +148,6 @@ def _parse_profile_document(source_path: Path) -> ProfileDefinition:
         hidden=hidden,
         turn_silence_ms=turn_silence_ms,
         speech_speed=float(speech_speed),
-        added_pause_ms=added_pause_ms,
     )
 
 

@@ -1,7 +1,6 @@
 """Tests for playing Reachy's voice more slowly without changing its pitch."""
 
 import numpy as np
-import pytest
 
 from talk_with_reachy.slow_speech import SpeechSlower
 
@@ -45,40 +44,3 @@ def test_a_speed_of_one_plays_the_audio_unchanged_and_reset_drops_held_audio() -
     slower.process(tone)
     slower.reset()
     assert slower.flush().size == 0
-
-
-def _pause_lengths(audio: np.ndarray) -> list[float]:
-    """Lengths in seconds of the silent stretches between sounds (not before the first or after the last)."""
-    quiet = np.abs(audio.astype(np.int32)) < 330
-    runs = np.split(quiet, np.flatnonzero(np.diff(quiet.astype(np.int8))) + 1)[1:-1]
-    return [run.size / RATE for run in runs if run.all() and run.size > RATE * 0.02]
-
-
-def test_pauses_between_words_get_longer_but_short_gaps_and_the_ends_do_not() -> None:
-    """A 0.2 s pause gains 0.3 s once; a 0.05 s gap, the lead-in and the trailing silence stay as they were."""
-    silence = np.zeros(int(RATE * 0.2), dtype=np.int16)
-    gap = np.zeros(int(RATE * 0.05), dtype=np.int16)
-    speech = np.concatenate([silence, _tone(0.3), gap, _tone(0.3), silence, _tone(0.3), silence])
-
-    slower = SpeechSlower(1.0, added_pause_ms=300, rate=RATE)
-    out = np.concatenate([*(slower.process(c) for c in np.array_split(speech, 29)), slower.flush()])
-
-    assert out.size - speech.size == int(RATE * 0.3)
-    assert _pause_lengths(out) == pytest.approx([0.05, 0.5], abs=0.002)
-    first_sound = np.flatnonzero(np.abs(speech) >= 330)[0]
-    assert np.flatnonzero(np.abs(out) >= 330)[0] == first_sound
-
-
-def test_added_pauses_work_together_with_slower_speech_and_restart_each_response() -> None:
-    """With slowing, the stretched pause gains 0.3 s; a new response's lead-in is not lengthened."""
-    silence = np.zeros(int(RATE * 0.2), dtype=np.int16)
-    speech = np.concatenate([_tone(0.3), silence, _tone(0.3)])
-    plain = _slow([speech])
-    slower = SpeechSlower(0.8, added_pause_ms=300, rate=RATE)
-
-    first = np.concatenate([slower.process(speech), slower.flush()])
-    second = np.concatenate([slower.process(np.concatenate([silence, speech])), slower.flush()])
-
-    assert first.size - plain.size == int(RATE * 0.3)
-    assert max(_pause_lengths(first)) - max(_pause_lengths(plain)) == pytest.approx(0.3, abs=0.001)
-    assert (second.size - first.size) / RATE == pytest.approx(0.2 / 0.8, abs=0.03)
