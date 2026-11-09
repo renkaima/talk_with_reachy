@@ -295,7 +295,12 @@ class TakeBreak(Tool):
             "feeling": {
                 "type": "string",
                 "enum": ["good", "not good", "don't know", "unclear"],
-                "description": "Their answer to 'Are you feeling good, or not good?'",
+                "description": "Their answer to 'Are you feeling good, or not good?', or what they already told you.",
+            },
+            "feeling_said": {
+                "type": "string",
+                "description": "Their own words about how they feel, if they said them before you asked "
+                "(for example 'I don't feel well').",
             },
         },
         "required": ["activity", "started_by"],
@@ -327,6 +332,7 @@ class TakeBreak(Tool):
             # When staff start a break, the voice is theirs, not the person's taking it.
             person=str(kwargs.get("person") or (speaker_name if started_by == "self" else "")),
             feeling=str(kwargs.get("feeling", "unclear")),
+            feeling_said=str(kwargs.get("feeling_said", ""))[:200],
             speaker_id=speaker_id,
         )
         logger.info("Tool call: take_break activity=%s break_id=%s", activity, break_id)

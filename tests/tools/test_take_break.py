@@ -64,13 +64,16 @@ async def test_breathing_queues_guided_breaths_and_logs_the_break(events: list[t
     """A self-started breathing break should move the robot and log its start and finish."""
     deps = _deps()
 
-    result = await take_break_module.TakeBreak()(deps, activity="breathe", started_by="self", feeling="not good")
+    result = await take_break_module.TakeBreak()(
+        deps, activity="breathe", started_by="self", feeling="not good", feeling_said="I don't feel well"
+    )
 
     assert result["status"] == "finished"
     assert isinstance(deps.movement_manager.queue_move.call_args.args[0], take_break_module.GuidedBreathingMove)
     assert [name for name, _ in events] == ["break_started", "break_finished"]
     started = events[0][1]
     assert started["person"] == "Sam" and started["speaker_id"] == "P01" and started["feeling"] == "not good"
+    assert started["feeling_said"] == "I don't feel well"
     assert events[1][1]["completed"] is True
 
 
