@@ -3,6 +3,9 @@ Sounds played by the take_break tool.
 chime_start.wav and chime_end.wav are soft bell tones generated for this app (sine tones with a
 gentle decay); they mark the start and the end of every break activity.
 
+silence.wav is 0.1 s of silence made for this app. Playing it replaces the song, which is how the
+music stops when someone starts talking.
+
 Music (activity "music"):
 
 All three tracks are by Kevin MacLeod and were released into the public domain on FreePD.com

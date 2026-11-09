@@ -298,7 +298,6 @@ def run(
             go_to_sleep_lock.release()
 
     deps.go_to_sleep = go_to_sleep_and_stop_app
-    deps.set_mic_muted = stream_manager.set_mic_muted
 
     def run_go_to_sleep_tool() -> dict[str, Any]:
         return app_lifecycle.run_go_to_sleep_tool(deps, logger)

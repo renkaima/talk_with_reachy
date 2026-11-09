@@ -27,7 +27,7 @@ from websockets.exceptions import ConnectionClosedError
 from openai.types.realtime.realtime_audio_input_turn_detection_param import ServerVad
 
 from talk_with_reachy import study_log, slow_speech
-from talk_with_reachy.tools import core_tools
+from talk_with_reachy.tools import core_tools, take_break
 from talk_with_reachy.config import (
     HF_LOCAL_CONNECTION_MODE,
     config,
@@ -828,6 +828,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self._slower.reset()
                         self._silent_retry_used = False
                         self.deps.movement_manager.set_listening(True)
+                        if take_break.pause_music_for_speech():
+                            await self._send_system_note(take_break.MUSIC_PAUSED_NOTE)
                         logger.debug("User speech started")
 
                     if event.type == "input_audio_buffer.speech_stopped":
@@ -907,6 +909,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
                         if not transcript:
                             logger.debug("Ignoring empty user transcript")
+                            # A sound with no words (for example the music itself) paused the break music: go on.
+                            take_break.choose_after_pause("more")
                             continue
 
                         self._turn_user_done_at = time.perf_counter()

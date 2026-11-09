@@ -1027,3 +1027,29 @@ async def test_run_session_response_lifecycle_toggles_done_event(monkeypatch: An
     assert handler._response_done_event.is_set()
     handler.deps.movement_manager.set_speaking.assert_any_call(True)
     handler.deps.movement_manager.set_speaking.assert_any_call(False)
+
+
+@pytest.mark.asyncio
+async def test_talking_during_break_music_pauses_it_and_tells_the_model(monkeypatch: Any) -> None:
+    """Speech start pauses the music and sends the hidden note; an empty transcript lets the music go on."""
+    handler = _session_handler(
+        monkeypatch,
+        (
+            _FakeEvent("input_audio_buffer.speech_started"),
+            _FakeEvent("conversation.item.input_audio_transcription.completed", item_id="item-1", transcript="  "),
+        ),
+    )
+    monkeypatch.setattr(hf_mod.take_break, "pause_music_for_speech", lambda: True)
+    choices: list[str] = []
+    monkeypatch.setattr(hf_mod.take_break, "choose_after_pause", lambda choice: choices.append(choice) or True)
+    notes: list[str] = []
+
+    async def note(text: str) -> None:
+        notes.append(text)
+
+    monkeypatch.setattr(handler, "_send_system_note", note)
+
+    await handler._run_realtime_session()
+
+    assert notes == [hf_mod.take_break.MUSIC_PAUSED_NOTE]
+    assert choices == ["more"]

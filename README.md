@@ -32,7 +32,7 @@ A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_re
 
 **In the Day Center mode** (the app starts in this mode; see [STUDY_SETUP.md](STUDY_SETUP.md#day-center-profile))
 
-- *Take a Break*: anyone, or staff on their behalf, can ask for a break. Reachy asks "good or not good?", offers two activities (slow breathing to watch or join, one minute of calm music, or a movement game), and asks "good or not good?" again afterwards. "I don't know" is a full answer, and after "not good" Reachy offers one more break or help from staff. Breathing and the movement game stop when someone says "stop".
+- *Take a Break*: anyone, or staff on their behalf, can ask for a break. Reachy asks "good or not good?", offers two activities (slow breathing to watch or join, one minute of calm music, or a movement game), and asks "good or not good?" again afterwards. "I don't know" is a full answer, and after "not good" Reachy offers one more break or help from staff. Any activity stops when someone says "stop". During the music Reachy keeps listening: when someone talks, the song pauses and Reachy asks "Do you want more music, or stop?"
 - *What's Next*: staff tell Reachy the weekly schedule and today's changes; anyone can ask what comes next.
 - *Daily Summary*: anyone can ask how the day went and hears totals; staff voices also hear who took each break and can add notes.
 - The person leads: Reachy greets, answers what was said, and waits. It brings up a break or what is next only when someone asks for help, asks what it can do, or says a word such as "tired". When someone does not understand Reachy, it says the same thing again in simpler words.
