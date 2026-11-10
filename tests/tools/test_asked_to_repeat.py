@@ -5,6 +5,7 @@ from collections.abc import Iterator
 import pytest
 
 from talk_with_reachy import choices, study_log, day_center
+from talk_with_reachy.tools import take_break
 from talk_with_reachy.tools.core_tools import ToolDependencies
 from talk_with_reachy.tools.asked_to_repeat import AskedToRepeat
 
@@ -80,3 +81,31 @@ async def test_with_no_question_to_repeat_reachy_waits(recorded: list[tuple[str,
     result = await _ask(heard="banana tree")
 
     assert result["say"] == "I will wait here. You can also ask staff."
+
+
+@pytest.mark.asyncio
+async def test_no_turns_down_both_and_yes_means_more_music(
+    recorded: list[tuple[str, dict[str, Any]]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """'No' to 'Breathing, or music?' ends the asking; 'Yes' to 'More music, or stop?' plays more."""
+    picked: list[str] = []
+    monkeypatch.setattr(take_break, "choose_after_pause", lambda choice: picked.append(choice) or True)
+
+    declined = await _ask(heard="No.", choices=["breathing", "music"])
+    more = await _ask(heard="Yes.", choices=["more music", "stop"])
+
+    assert declined["say"] == "Okay. I am here if you need me."
+    assert more == {"they_chose": "more", "say": "More music. Okay."} and picked == ["more"]
+
+
+@pytest.mark.asyncio
+async def test_a_question_asked_again_without_the_tool_still_counts(
+    recorded: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """If the model re-asks on its own, the next unclear answer already ends the asking."""
+    choices.reachy_said("Breathing, or music?")
+    choices.reachy_said("Breathing, or music?")
+
+    result = await _ask(heard="Yes.", choices=["breathing", "music"])
+
+    assert result["say"].startswith("I will wait here.")

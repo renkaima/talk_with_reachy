@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from talk_with_reachy import choices, study_log, day_center
+from talk_with_reachy.tools import take_break
 from talk_with_reachy.tools.core_tools import Tool, ToolDependencies
 
 
@@ -39,6 +40,22 @@ class AskedToRepeat(Tool):
         if len(options) != 2:
             options = choices.last_question_choices()
         speaker_id, _ = day_center.current_speaker()
+        names = [set(choices.canonical(option).split("+")) for option in options]
+        if len(options) == 2 and any("more" in n for n in names) and any("stop" in n for n in names):
+            # "More music, or stop?": "yes" or "okay" means more and "no" means stop (the app may have acted already).
+            answer = choices.music_answer(heard)
+            if answer is not None:
+                if answer == "stop":
+                    take_break.stop_running_break("tool", heard)
+                else:
+                    take_break.choose_after_pause("more")
+                study_log.record_event("answer_matched", heard=heard, choice=answer, speaker_id=speaker_id)
+                return {"they_chose": answer, "say": "More music. Okay." if answer == "more" else "Okay. We stopped."}
+        if choices.is_decline(heard):
+            # "No" to "Breathing, or music?" picks neither; asking again would push.
+            choices.repeats.reset()
+            study_log.record_event("answer_matched", heard=heard, choice="neither", speaker_id=speaker_id)
+            return {"they_chose": "neither", "say": "Okay. I am here if you need me.", "next": "Do not ask again."}
         if len(options) == 2:
             matched = choices.match(heard, options)
             if matched is not None:

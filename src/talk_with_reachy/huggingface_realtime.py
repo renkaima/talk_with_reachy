@@ -180,6 +180,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         # Whether words were heard since the break music last paused; with none, the music goes on by itself.
         self._words_since_music_paused = True
         self._music_resume_task: asyncio.Task[None] | None = None
+        # Set while the reply asked for after a break ends is due; a silent one is asked for once more.
+        self._break_end_reply_due = False
         # Plays Reachy's voice more slowly when the profile asks for it (speech_speed); set per session.
         self._slower = slow_speech.SpeechSlower(1.0, rate=self.SAMPLE_RATE)
         # A reply that is only a tool call that asks for no follow-up (asked_to_repeat, break_check) would
@@ -575,6 +577,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         """Tell the model that a break activity ended, and ask it to speak unless someone just did."""
         await self._send_app_note(str(outcome.get("note", "")))
         if outcome.get("respond"):
+            self._break_end_reply_due = True
             await self._safe_response_create()
 
     async def _send_startup_greeting_prompt(self) -> None:
@@ -944,6 +947,14 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self.deps.movement_manager.set_speaking(False)
                         if not self._response_spoke:
                             self._silent_calls |= self._calls_this_response
+                        if self._break_end_reply_due:
+                            # The server's own rules tell the model not to comment after a physical action, so
+                            # the reply after a break can come back empty; ask once more, out loud.
+                            self._break_end_reply_due = False
+                            if not self._response_spoke and not self._calls_this_response:
+                                study_log.record_event("silent_reply_retried", tool="break_end")
+                                await self._send_app_note("Say your reply out loud now.")
+                                await self._safe_response_create()
                         self._response_done_event.set()
                         self._response_started_or_rejected_event.set()
                         self.study.response_done()

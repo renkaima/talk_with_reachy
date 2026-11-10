@@ -17,6 +17,7 @@ from numpy.typing import NDArray
 from reachy_mini.utils import create_head_pose
 from reachy_mini.motion.move import Move
 from talk_with_reachy import study_log, day_center
+from talk_with_reachy.tools import break_check
 from talk_with_reachy.tools.core_tools import Tool, ToolDependencies
 
 
@@ -294,6 +295,8 @@ class RunningBreak:
 _music: BreakMusic | None = None
 # The break that is running now, if any. Only one break runs at a time.
 _break: RunningBreak | None = None
+# Timers that save "no answer" when nobody answers the question after a break (kept so they are not collected).
+_no_answer_tasks: set["asyncio.Task[None]"] = set()
 
 
 def pause_music_for_speech() -> bool:
@@ -420,6 +423,10 @@ async def _run_break(deps: ToolDependencies, running: RunningBreak, tracks: list
         stopped_by=running.stopped_by,
     )
     logger.info("Break %s (%s) ended: %s", running.break_id, activity, outcome)
+    if outcome == "finished":
+        _no_answer_tasks.add(asyncio.create_task(break_check.record_no_answer_later(running.break_id)))
+        for task in [task for task in _no_answer_tasks if task.done()]:
+            _no_answer_tasks.discard(task)
     if deps.break_ended is not None:
         note = END_NOTES[outcome].format(break_id=running.break_id)
         await deps.break_ended(
@@ -503,9 +510,12 @@ class TakeBreak(Tool):
         raw = str(kwargs.get("activity", "")).strip().lower()
         activity = ACTIVITY_ALIASES.get(raw, raw)
         if activity not in ("breathe", "music", "move"):
-            return {"error": f"unknown activity {raw!r}", "next": "Call take_break with breathe, music, or move."}
+            # Only the error text reaches the model, so it carries the next step.
+            return {"error": f"unknown activity {raw!r}; call take_break again with breathe, music, or move"}
         if activity == "move" and not DANCE_AVAILABLE:
-            return {"error": "the movement game is not available on this robot", "say": "Breathing, or music?"}
+            return {
+                "error": "the movement game is not available on this robot; say 'I cannot move now. Breathing, or music?'"
+            }
         if _break is not None:
             return {
                 "status": "already running",
@@ -515,7 +525,7 @@ class TakeBreak(Tool):
         tracks = sorted(SOUNDS_DIR.glob("calm_*.wav"))
         if activity == "music" and not tracks:
             logger.error("No music found in %s", SOUNDS_DIR)
-            return {"error": "no music is installed", "say": "I cannot play music now. Do you want breathing?"}
+            return {"error": "no music is installed; say 'I cannot play music now. Breathing, or something else?'"}
 
         speaker_id, speaker_name = day_center.current_speaker()
         started_by = str(kwargs.get("started_by", "self"))

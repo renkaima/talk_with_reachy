@@ -159,6 +159,11 @@ def is_stop(text: str) -> bool:
     return False
 
 
+def is_decline(text: str) -> bool:
+    """Tell whether a short answer turns down both choices ("no", "neither", "nothing", "no thanks")."""
+    return normalize(text) in {"no", "nope", "no thanks", "no thank you", "neither", "nothing", "none", "neither one"}
+
+
 def music_answer(text: str) -> str | None:
     """Return "more" or "stop" for a short answer to "More music, or stop?", or None if it is neither."""
     norm = normalize(text)
@@ -201,10 +206,21 @@ repeats = RepeatCounter()
 
 
 def reachy_said(text: str) -> None:
-    """Remember Reachy's latest words (called by the realtime handler)."""
+    """Remember Reachy's latest words (called by the realtime handler).
+
+    Asking the same two choices again right away counts as a try, even when the model did not call
+    asked_to_repeat, so the asking still ends after the second try. A new question starts a new count.
+    """
     global _last_reachy_words
-    if text.strip():
-        _last_reachy_words = text.strip()
+    if not text.strip():
+        return
+    pair, previous = split_choices(text), split_choices(_last_reachy_words)
+    if len(pair) == 2:
+        if len(previous) == 2 and {canonical(c) for c in pair} == {canonical(c) for c in previous}:
+            repeats.unclear(pair)
+        else:
+            repeats.reset()
+    _last_reachy_words = text.strip()
 
 
 def last_question_choices() -> list[str]:

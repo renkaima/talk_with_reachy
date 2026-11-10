@@ -106,7 +106,7 @@ async def test_take_break_returns_at_once_and_reports_the_end_later(events: list
     assert outcome["status"] == "finished" and outcome["respond"] is True
     assert "All done. How do you feel now: good, or not good?" in outcome["note"]
     assert result["break_id"] in outcome["note"]
-    assert [name for name, _ in events] == ["break_started", "break_finished"]
+    assert [name for name, _ in events][:2] == ["break_started", "break_finished"]
     started = events[0][1]
     assert started["person"] == "Sam" and started["speaker_id"] == "P01"
     assert started["feeling_said"] == "I don't feel well" and "feeling" not in started
@@ -302,7 +302,9 @@ async def test_movement_game_repeats_each_move_before_the_next(events: list[tupl
 async def test_activity_words_are_understood_and_others_rejected(events: list[tuple[str, dict[str, Any]]]) -> None:
     """'breathing' is taken as breathe; an activity outside the three choices starts nothing."""
     result = await take_break_module.TakeBreak()(_deps(), activity="dance", started_by="self")
-    assert "error" in result and "next" in result
+    assert (
+        "call take_break again with breathe, music, or move" in result["error"]
+    )  # only the error text reaches the model
     assert events == []
 
     _, task = await _start(_deps(), activity="Breathing", started_by="self")

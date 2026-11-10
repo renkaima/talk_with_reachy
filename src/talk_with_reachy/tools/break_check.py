@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any
 
@@ -6,6 +7,18 @@ from talk_with_reachy.tools.core_tools import Tool, ToolDependencies
 
 
 logger = logging.getLogger(__name__)
+
+# Breaks whose after-break answer was saved; a finished break with none gets "no answer" after NO_ANSWER_AFTER_S.
+answered: set[str] = set()
+NO_ANSWER_AFTER_S = 60.0
+
+
+async def record_no_answer_later(break_id: str) -> None:
+    """Save "no answer" for a finished break if nobody answered "How do you feel now?" in time."""
+    await asyncio.sleep(NO_ANSWER_AFTER_S)
+    if break_id not in answered:
+        answered.add(break_id)
+        study_log.record_event("break_check", break_id=break_id, answer="no answer", source="timeout")
 
 
 class BreakCheck(Tool):
@@ -32,9 +45,9 @@ class BreakCheck(Tool):
         if not answer:
             return {"error": "answer must be a non-empty string"}
         speaker_id, _ = day_center.current_speaker()
-        study_log.record_event(
-            "break_check", break_id=str(kwargs.get("break_id", "")), answer=answer, speaker_id=speaker_id
-        )
+        break_id = str(kwargs.get("break_id", ""))
+        answered.add(break_id)
+        study_log.record_event("break_check", break_id=break_id, answer=answer, speaker_id=speaker_id)
         logger.info("Tool call: break_check answer=%s", answer[:80])
         if answer == "not good":
             return {"saved": answer, "say": "One more break, or help from staff?"}
