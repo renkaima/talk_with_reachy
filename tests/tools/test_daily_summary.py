@@ -32,9 +32,12 @@ def transcripts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _event(today, "13:00", "break_started", break_id="b", started_by="staff", person="Noah", activity="music"),
         _event(today, "13:05", "asked_to_repeat", heard="mmh"),
         {"type": "utterance", "time": f"{today.isoformat()} 10:00:01.000-05:00", "text": "hi"},
-        # Reachy asked twice, but the model logged asked_to_repeat only once; a person saying it does not count.
+        # Reachy asked twice (with the old and the 1.3.10 wording), but the model logged asked_to_repeat only once;
+        # a person saying it does not count.
         _utterance(today, "13:05", "reachy", "Sorry. Please say it again."),
-        _utterance(today, "13:06", "reachy", "Sorry. Please say it again."),
+        _utterance(
+            today, "13:06", "reachy", "I did not hear that well. Do you want to talk with me, or hear what I can do?"
+        ),
         _utterance(today, "13:07", "person", "Reachy, please say it again."),
         _utterance(today - timedelta(days=1), "09:01", "reachy", "Sorry. Please say it again."),
     ]
