@@ -193,6 +193,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         self._break_end_after_reply = False
         self._hold_timer: asyncio.Task[None] | None = None
         self._reply_text = ""
+        # After a reply that was only a tool call, the follow-up reply comes a moment later; until then, Reachy
+        # counts as about to speak, so a break does not start (or the music resume) under its words.
+        self._reply_expected_until = 0.0
         # Plays Reachy's voice more slowly when the profile asks for it (speech_speed); set per session.
         self._slower = slow_speech.SpeechSlower(1.0, rate=self.SAMPLE_RATE)
         # A reply that is only a tool call that asks for no follow-up (asked_to_repeat, break_check) would
@@ -301,7 +304,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
     def seconds_until_reachy_is_quiet(self) -> float:
         """Seconds until Reachy's speech has finished playing; a short wait while a response is still arriving."""
         remaining = max(0.0, self._speech_end_mono - time.monotonic())
-        if not self._response_done_event.is_set():
+        if not self._response_done_event.is_set() or time.monotonic() < self._reply_expected_until:
+            # A reply is arriving, or one is about to be asked for after a reply that was only a tool call.
             return max(remaining, 0.2)
         return remaining
 
@@ -991,6 +995,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self._calls_this_response = set()
                         self._response_tag, self._sent_tag = self._sent_tag, None
                         self._reply_text = ""
+                        self._reply_expected_until = 0.0
                         if take_break.music_waiting_for_choice():
                             self._cancel_music_resume()  # Reachy is answering words; the person will choose
                         self.study.response_created()
@@ -1010,6 +1015,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self.deps.movement_manager.set_speaking(False)
                         if not self._response_spoke:
                             self._silent_calls |= self._calls_this_response
+                            if self._calls_this_response:
+                                self._reply_expected_until = time.monotonic() + 1.5
                         status = getattr(getattr(event, "response", None), "status", None)
                         if (
                             self._response_tag == "break_end"

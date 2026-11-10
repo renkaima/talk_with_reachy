@@ -9,6 +9,8 @@ from talk_with_reachy.tools.core_tools import Tool, ToolDependencies
 logger = logging.getLogger(__name__)
 
 STAFF = "Okay. Please go to a staff member, or wave to one."
+SAFE = "Please tell a staff member now. This is important."
+HEALTH_WORDS = ("sick", "ill", "hurt", "hurts", "pain", "scared", "afraid", "bleeding")
 # What to say and do once an answer is matched to a known choice, so the step goes on and does not stop at
 # "Sick. Okay." (keys are choices.canonical names).
 NEXT_STEP: dict[str, tuple[str, str]] = {
@@ -86,7 +88,8 @@ class AskedToRepeat(Tool):
                 take_break.stop_running_break("tool", heard)
                 return matched("stop", {"they_chose": "stop", "say": "Okay. We stopped."})
             if answer == "more":
-                take_break.choose_after_pause("more")
+                if not take_break.choose_after_pause("more") and take_break.running_activity() != "music":
+                    return matched("more", {"say": "The song is over."})
                 return matched("more", {"they_chose": "more", "say": "More music. Okay."})
         if choices.is_decline(heard):
             # "No" picks neither choice; asking again would push.
@@ -106,9 +109,14 @@ class AskedToRepeat(Tool):
                         "next": then or f"Take '{choice}' as their answer and go on as if they had said it.",
                     },
                 )
+        # Hurt, sick, or scared always goes to staff (CALM AND SAFE), even right after another question.
+        if any(choices._contains(norm, w) and not choices._negated(norm, w) for w in HEALTH_WORDS):
+            take_break.stop_running_break("tool", heard)
+            return matched("sick", {"say": SAFE, "next": "Do not start an activity."})
         # Whole requests do what they say, even right after another question (exact words only).
         request = choices.request_in(heard)
         if request == "staff":
+            take_break.stop_running_break("tool", heard)
             return matched("staff", {"say": STAFF})
         if request is not None:
             return matched(request, _activity_step(request))

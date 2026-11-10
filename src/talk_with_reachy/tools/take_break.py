@@ -237,6 +237,18 @@ async def wait_for_reply_then_quiet(deps: ToolDependencies) -> None:
     await wait_until_reachy_is_quiet(deps)
 
 
+async def wait_for_answer_or_choice(deps: ToolDependencies, music: BreakMusic, start_wait_s: float = 10.0) -> None:
+    """Wait for Reachy to start and finish its answer after a pause, unless a choice comes first."""
+    if deps.seconds_until_reachy_is_quiet is None:
+        return
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + start_wait_s
+    while music.waiting_for_choice() and deps.seconds_until_reachy_is_quiet() <= 0 and loop.time() < deadline:
+        await asyncio.sleep(0.1)
+    if music.waiting_for_choice():
+        await wait_until_reachy_is_quiet(deps)
+
+
 async def play_break_music(
     deps: ToolDependencies, track: Path, break_id: str, stop: asyncio.Event | None = None
 ) -> str:
@@ -268,8 +280,8 @@ async def play_break_music(
             if music.stop_requested:
                 return "stop"
             study_log.record_event("music_paused", break_id=break_id, at_s=round(music.position_s, 1))
-            # The time to choose starts once Reachy has answered, not while it is still talking.
-            await wait_for_reply_then_quiet(deps)
+            # The time to choose starts once Reachy has answered, not while the person or Reachy is still talking.
+            await wait_for_answer_or_choice(deps, music)
             choice = await music.wait_for_choice()
             study_log.record_event(
                 "music_choice", break_id=break_id, choice="more" if choice == "more_now" else choice
@@ -433,6 +445,9 @@ async def _run_break(
         deps.movement_manager.clear_move_queue()
         outcome = "error"
     try:
+        if outcome == "stopped":
+            # Reachy is answering the "stop" (or saying the staff sentence); the chime waits for it.
+            await wait_for_reply_then_quiet(deps)
         await play_and_wait(deps, END_CHIME)
     except Exception:
         logger.exception("End chime failed")

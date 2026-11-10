@@ -124,3 +124,34 @@ async def test_help_or_an_activity_named_after_another_question_does_what_it_say
     assert staff["say"] == "Okay. Please go to a staff member, or wave to one."
     assert music["they_chose"] == "music" and music["say"].startswith("Music. Okay.")
     assert unsure["say"].startswith("Okay. I will wait here.") and "asked_to_repeat" not in [n for n, _ in recorded]
+
+
+@pytest.mark.asyncio
+async def test_hurt_sick_or_scared_always_goes_to_staff(
+    recorded: list[tuple[str, dict[str, Any]]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """'I feel sick' after 'Breathing, or music?' gets the staff sentence and stops any running break."""
+    stops: list[str] = []
+    monkeypatch.setattr(take_break, "stop_running_break", lambda source, words="": stops.append(words) or True)
+
+    result = await _ask(heard="I feel sick.", choices=["breathing", "music"])
+
+    assert result["say"] == "Please tell a staff member now. This is important." and stops == ["I feel sick."]
+
+
+@pytest.mark.asyncio
+async def test_asking_the_question_again_later_starts_a_fresh_count(
+    recorded: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """After giving up, the same question asked again after other talk gets one re-ask again, not 'I am here.'."""
+    choices.reachy_said("Breathing, or music?")
+    await _ask(heard="Yes.", choices=["breathing", "music"])
+    choices.reachy_said("Which one: breathing, or music?")
+    await _ask(heard="Yes.", choices=["breathing", "music"])  # gives up
+    choices.reachy_said("I will wait here. You can say breathing, or music, any time. You can also ask staff.")
+    choices.reachy_said("Okay. Tell me about your day, or ask me a question.")
+    choices.reachy_said("Breathing, or music?")
+
+    result = await _ask(heard="Yes.", choices=["breathing", "music"])
+
+    assert result["say"] == "Which one: breathing, or music?"

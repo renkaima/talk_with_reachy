@@ -1178,3 +1178,26 @@ async def test_break_end_reply_after_someone_talked_comes_after_their_reply() ->
     await handler._release_held_break_end_reply(person_said_words=True)
 
     assert handler._pending_responses.qsize() == 0 and handler._break_end_after_reply is True
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_break_end_reply_waits_for_the_person(monkeypatch: Any) -> None:
+    """The server cancels the reply before it reports the new speech; the app holds it instead of retrying."""
+    handler = _session_handler(
+        monkeypatch,
+        (_FakeEvent("response.created"), _FakeEvent("response.done", response=SimpleNamespace(status="cancelled"))),
+    )
+    handler._sent_tag = "break_end"
+    requests: list[dict[str, Any]] = []
+
+    async def create(**kwargs: Any) -> None:
+        requests.append(kwargs)
+
+    monkeypatch.setattr(handler, "_safe_response_create", create)
+    monkeypatch.setattr(hf_mod, "BREAK_END_HOLD_MAX_S", 60.0)
+
+    await handler._run_realtime_session()
+
+    assert requests == [] and handler._break_end_reply_held is True
+    assert handler._hold_timer is not None
+    handler._hold_timer.cancel()

@@ -321,15 +321,13 @@ def reachy_said(text: str) -> None:
         key = repeats.key_for(pair)
         if repeats.current_key and key != repeats.current_key:
             repeats.reset()  # another question: its count starts over
-        elif (
-            len(previous) == 2
-            and repeats.key_for(previous) == key
-            and "which one" not in text.lower()
-            and not repeats.counted_recently()
-        ):
-            # The model asked the same question again on its own ("Which one" comes from asked_to_repeat,
-            # which has already counted that try).
-            repeats.unclear(pair)
+        elif len(previous) == 2 and repeats.key_for(previous) == key:
+            if "which one" not in text.lower() and not repeats.counted_recently():
+                # The model asked the same question again on its own ("Which one" comes from asked_to_repeat,
+                # which has already counted that try).
+                repeats.unclear(pair)
+        elif not _last_reachy_words.lower().startswith(("i will wait here", "i am here")):
+            repeats.reset()  # asked again after other talk: a fresh start (not right after giving up)
     _last_reachy_words = text.strip()
 
 
