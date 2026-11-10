@@ -30,5 +30,10 @@ class AskedToRepeat(Tool):
         speaker_id, _ = day_center.current_speaker()
         study_log.record_event("asked_to_repeat", heard=str(kwargs.get("heard", ""))[:200], speaker_id=speaker_id)
         logger.info("Tool call: asked_to_repeat speaker=%s", speaker_id)
-        # Used only when the reply had no speech and the app asks the model to talk (see huggingface_realtime).
-        return {"saved": True, "say": "Sorry. Please say it again."}
+        # Read only when the reply had no speech and the app asks the model to talk (see huggingface_realtime). It
+        # gives no fixed sentence: after a two-choice question, repeating "Please say it again" made Reachy loop.
+        return {
+            "saved": True,
+            "next": "Say your words out loud now. After a two-choice question, say the same two choices again. "
+            "Never say 'Please say it again' twice in a row.",
+        }
