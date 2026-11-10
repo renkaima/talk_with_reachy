@@ -542,7 +542,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         """
         if take_break.running_activity() is None:
             return
-        if choices.is_stop(transcript):
+        if choices.is_stop(transcript) or choices.says_unwell(transcript) or choices.request_in(transcript) == "staff":
+            # Hurt, sick, scared, or a request for staff also ends the activity; the model says the staff sentence.
             take_break.stop_running_break("words", transcript)
         elif take_break.music_waiting_for_choice():
             answer = choices.music_answer(transcript)

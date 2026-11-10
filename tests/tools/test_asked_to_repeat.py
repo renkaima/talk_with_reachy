@@ -155,3 +155,13 @@ async def test_asking_the_question_again_later_starts_a_fresh_count(
     result = await _ask(heard="Yes.", choices=["breathing", "music"])
 
     assert result["say"] == "Which one: breathing, or music?"
+
+
+@pytest.mark.asyncio
+async def test_yes_to_the_greeting_means_talk(recorded: list[tuple[str, dict[str, Any]]]) -> None:
+    """'Yes' to 'Do you want to talk with me, or hear what I can do?' starts a chat, with no re-ask."""
+    result = await _ask(heard="Yes.", choices=["talk with me", "hear what I can do"])
+
+    assert result["they_chose"] == "talk"
+    assert result["say"] == "Okay. Tell me about your day, or ask me a question."
+    assert [name for name, _ in recorded] == ["answer_matched"]

@@ -124,3 +124,18 @@ def test_only_whole_requests_start_something_after_another_question(words: str, 
 def test_a_name_alone_does_not_resume_the_music() -> None:
     """'Reachy?' to get attention leaves the song paused."""
     assert choices.music_answer("Reachy?") is None
+
+
+@pytest.mark.parametrize(
+    ("words", "expected"),
+    [
+        ("I feel sick.", True),
+        ("My arm hurts.", True),
+        ("I am scared.", True),
+        ("I am not sick.", False),
+        ("I am fine.", False),
+    ],
+)
+def test_hurt_sick_or_scared_is_heard_unless_negated(words: str, expected: bool) -> None:
+    """'I feel sick' goes to staff; 'I am not sick' does not."""
+    assert choices.says_unwell(words) is expected

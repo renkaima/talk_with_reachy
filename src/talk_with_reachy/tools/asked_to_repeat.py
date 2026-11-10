@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 STAFF = "Okay. Please go to a staff member, or wave to one."
 SAFE = "Please tell a staff member now. This is important."
-HEALTH_WORDS = ("sick", "ill", "hurt", "hurts", "pain", "scared", "afraid", "bleeding")
 # What to say and do once an answer is matched to a known choice, so the step goes on and does not stop at
 # "Sick. Okay." (keys are choices.canonical names).
 NEXT_STEP: dict[str, tuple[str, str]] = {
@@ -21,7 +20,7 @@ NEXT_STEP: dict[str, tuple[str, str]] = {
     "one more break": ("Breathing, or music?", "Then follow TAKE A BREAK."),
     "something else": ("Okay. I am here if you need me.", "Do not ask what they want instead."),
     "talk": ("Okay. Tell me about your day, or ask me a question.", "Then talk about what they say."),
-    "what you can do": ("I can help with a break, or tell you what is next. We can also just talk.", ""),
+    "what you can do": ("I can talk with you, help with a break, or tell you what is next. I can also dance.", ""),
     "good": ("", "Call break_check with 'good' if this was the question after a break, and say what it returns."),
     "not good": (
         "",
@@ -44,8 +43,8 @@ class AskedToRepeat(Tool):
 
     name = "asked_to_repeat"
     description = (
-        "Call this, and say nothing else, when the answer to your two-choice question did not clearly pick one of "
-        "the two choices. It checks whether the words sound like one of the choices, and it tells you exactly "
+        "Call this, and say nothing else, when the answer to your decision question (a break, feelings, help, "
+        "music; never a chat question) did not clearly pick one of the two choices. It checks whether the words sound like one of the choices, and it tells you exactly "
         "what to say next and what to do: the step for the choice they meant, the two choices once more, or that "
         "you will wait. Say those words, then do what 'next' says."
     )
@@ -91,6 +90,9 @@ class AskedToRepeat(Tool):
                 if not take_break.choose_after_pause("more") and take_break.running_activity() != "music":
                     return matched("more", {"say": "The song is over."})
                 return matched("more", {"they_chose": "more", "say": "More music. Okay."})
+        if names and any("talk" in n for n in names) and norm in {"yes", "yeah", "yep", "okay", "ok", "sure"}:
+            # The greeting: "yes" to "Do you want to talk with me, or hear what I can do?" means talk.
+            return matched("talk", {"they_chose": "talk", "say": NEXT_STEP["talk"][0], "next": NEXT_STEP["talk"][1]})
         if choices.is_decline(heard):
             # "No" picks neither choice; asking again would push.
             return matched("neither", {"say": "Okay. I am here if you need me.", "next": "Do not ask again."})
@@ -110,7 +112,7 @@ class AskedToRepeat(Tool):
                     },
                 )
         # Hurt, sick, or scared always goes to staff (CALM AND SAFE), even right after another question.
-        if any(choices._contains(norm, w) and not choices._negated(norm, w) for w in HEALTH_WORDS):
+        if choices.says_unwell(heard):
             take_break.stop_running_break("tool", heard)
             return matched("sick", {"say": SAFE, "next": "Do not start an activity."})
         # Whole requests do what they say, even right after another question (exact words only).

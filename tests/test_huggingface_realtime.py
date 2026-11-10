@@ -1064,6 +1064,8 @@ async def test_talking_during_break_music_pauses_it_and_a_sound_lets_it_go_on(mo
         ("More.", True, [], ["more"]),
         ("Yes.", True, [], ["more"]),
         ("No.", True, ["No."], []),
+        ("I feel sick.", False, ["I feel sick."], []),  # CALM AND SAFE: the break stops before the staff sentence
+        ("I need help.", True, ["I need help."], []),
     ],
 )
 def test_words_during_a_break_act_in_code(

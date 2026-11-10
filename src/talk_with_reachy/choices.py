@@ -245,6 +245,16 @@ def request_in(text: str) -> str | None:
     return None
 
 
+# Words that send someone to staff at once (CALM AND SAFE), wherever they come in a conversation.
+HEALTH_WORDS = ("sick", "ill", "hurt", "hurts", "pain", "scared", "afraid", "bleeding")
+
+
+def says_unwell(text: str) -> bool:
+    """Tell whether someone says they are hurt, sick, or scared ("I feel sick"), not "I am not sick"."""
+    norm = normalize(text)
+    return any(_contains(norm, word) and not _negated(norm, word) for word in HEALTH_WORDS)
+
+
 def is_decline(text: str) -> bool:
     """Tell whether a short answer turns down both choices ("no", "neither", "nothing", "no thanks")."""
     return normalize(text) in {"no", "nope", "no thanks", "no thank you", "neither", "nothing", "none", "neither one"}

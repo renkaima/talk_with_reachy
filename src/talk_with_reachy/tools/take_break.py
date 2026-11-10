@@ -377,7 +377,8 @@ async def _wait_or_stop(stop: asyncio.Event, seconds: float) -> bool:
 # talking to Reachy at that moment, asks the model to speak.
 END_NOTES = {
     "finished": "Say: 'All done. How do you feel now: good, or not good?' When they answer, call break_check "
-    "with break_id {break_id} and their answer.",
+    "with break_id {break_id} and their answer, and in the same reply say 'Come back any time you need me.' "
+    "(or, after 'not good', 'One more break, or help from staff?').",
     # Information only: this note gets no reply of its own and joins the person's next words in one message.
     "stopped": "It was stopped. Do not ask how they feel.",
     "no answer": "Nobody chose more music or stop, so it ended. Say only: 'All done.'",
