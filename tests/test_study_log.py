@@ -44,8 +44,10 @@ def test_session_has_header_utterances_events_and_footer(study_dir: Path) -> Non
         "utterance",
         "speaker_summary",
         "speaker_summary",
+        "session_problems",
         "session_end",
     ]
+    assert recs[-2]["problems"] == {}
     header = recs[0]
     assert header["schema_version"] == study_log.SCHEMA_VERSION
     assert header["robot_id"] == "robotA"
@@ -92,7 +94,8 @@ def test_csv_timeline_matches_the_jsonl(study_dir: Path) -> None:
     study_log.stop()
 
     rows = csv_rows(study_dir)
-    assert [r["kind"] for r in rows] == ["event", "utterance", "event", "summary", "event"]
+    assert [r["kind"] for r in rows] == ["event", "utterance", "event", "summary", "summary", "event"]
+    assert rows[-2]["text"] == "problems: no_reply=1"  # nobody answered the person before the run ended
     person = rows[1]
     assert person["speaker"] == "person"
     assert (person["speaker_id"], person["speaker_name"]) == ("V001", "Alice")
@@ -184,7 +187,7 @@ def test_session_ends_with_a_summary_per_speaker(study_dir: Path) -> None:
     assert summaries[0]["speech_s"] == pytest.approx(3.75, abs=0.01)
     assert summaries[0]["speaker"] == "person"
 
-    rows = [r for r in csv_rows(study_dir) if r["kind"] == "summary"]
+    rows = [r for r in csv_rows(study_dir) if r["kind"] == "summary" and r["speaker_id"]]
     assert [(r["speaker_id"], r["speaker_name"]) for r in rows] == [
         ("P01", "Alice"),
         ("reachy", "Reachy"),
@@ -192,3 +195,26 @@ def test_session_ends_with_a_summary_per_speaker(study_dir: Path) -> None:
     ]
     assert rows[0]["text"] == "2 utterances, 0:00:03.8 of speech"
     assert rows[2]["text"] == "1 utterance, 0:00:00.5 of speech"
+
+
+def test_problems_the_model_cannot_report_are_found_and_counted(study_dir: Path) -> None:
+    """The same question twice in a row and a turn with no reply become events and end up in session_problems."""
+    study_log.start()
+    _utterance("person", "I need a break.", 0.0, 1.0, speaker_id="P01")
+    _utterance("reachy", "Breathing, or music?", 1.5, 1.0, speaker_id="reachy")
+    _utterance("person", "Yes.", 3.0, 0.5, speaker_id="P01")
+    study_log.record_event("asked_to_repeat", heard="Yes.")
+    _utterance("reachy", "Which one: breathing, or music?", 4.0, 1.0, speaker_id="reachy")
+    _utterance("reachy", "Okay. Breathing, or music?", 5.5, 1.0, speaker_id="reachy")
+    _utterance("person", "Oh my god!", 7.0, 0.5, speaker_id="P01")
+    _utterance("person", "Then what's up?", 9.0, 0.5, speaker_id="P01")
+    study_log.stop()
+
+    recs = records(study_dir)
+    events = [r for r in recs if r["type"] == "event"]
+    names = [e["event"] for e in events]
+    assert names == ["asked_to_repeat", "same_question_again", "same_question_again", "no_reply"]
+    assert [e.get("times") for e in events[1:3]] == [2, 3] and events[3]["to"] == "Oh my god!"
+    problems = next(r for r in recs if r["type"] == "session_problems")["problems"]
+    assert problems == {"asked_to_repeat": 1, "no_reply": 2, "same_question_again": 2}
+    assert csv_rows(study_dir)[-2]["text"] == "problems: asked_to_repeat=1 no_reply=2 same_question_again=2"

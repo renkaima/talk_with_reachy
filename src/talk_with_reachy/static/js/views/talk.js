@@ -11,6 +11,8 @@ import { consumePendingApply } from "../pending-apply.js";
 import { setPersonality } from "../personality-badge.js";
 import { h, prettifyProfileName } from "../ui.js";
 
+const SHOW_WORDS_KEY = "talk_with_reachy.show_words";
+
 const CAPTION_BY_STATE = Object.freeze({
   [ORB_STATES.MUTED]: "Muted",
   [ORB_STATES.IDLE]: "Ready",
@@ -32,6 +34,7 @@ export async function mountTalkView({ outlet, signal }) {
   let togglePending = false;
   let activePersonality = null;
   let subscription = null;
+  let unsubscribeTranscript = null;
 
   const caption = h(
     "p",
@@ -55,11 +58,39 @@ export async function mountTalkView({ outlet, signal }) {
 
   signal.addEventListener("abort", cleanup, { once: true });
 
+  // The last thing Reachy heard and said, for testing and demonstrations. Hidden until someone turns it on in
+  // this browser, because in a shared room the screen would show what people said.
+  const heardLine = h("p", { class: "talk__line" });
+  const saidLine = h("p", { class: "talk__line" });
+  const lines = h("div", { class: "talk__lines", "aria-live": "polite" }, heardLine, saidLine);
+  const wordsToggle = h("button", { type: "button", class: "talk__words-toggle" });
+  let showWords = false;
+  try {
+    showWords = localStorage.getItem(SHOW_WORDS_KEY) === "1";
+  } catch {
+    // storage unavailable: keep the words hidden
+  }
+  function syncWords() {
+    lines.hidden = !showWords;
+    wordsToggle.textContent = showWords ? "Hide what Reachy hears" : "Show what Reachy hears";
+  }
+  wordsToggle.addEventListener("click", () => {
+    showWords = !showWords;
+    try {
+      localStorage.setItem(SHOW_WORDS_KEY, showWords ? "1" : "0");
+    } catch {
+      // storage unavailable: the choice lasts until the page is closed
+    }
+    syncWords();
+  });
+  syncWords();
   const view = h(
     "section",
     { class: "view view--talk" },
     h("div", { class: "talk__orb-wrap" }, orb.root),
-    caption
+    caption,
+    lines,
+    wordsToggle
   );
   outlet.replaceChildren(view);
 
@@ -89,6 +120,13 @@ export async function mountTalkView({ outlet, signal }) {
   orb.root.disabled = false;
   syncMicAria();
 
+  unsubscribeTranscript = subscribe("conversation.transcript", (params) => {
+    const text = (params?.text || "").trim();
+    if (!params?.final || !text) return;
+    if (params.role === "user") heardLine.textContent = `Heard: “${text}”`;
+    else if (params.role === "assistant") saidLine.textContent = `Reachy: “${text}”`;
+  });
+
   subscription = subscribeConversationEvents({
     // Re-sync mic state after subscribing: another tab may have toggled it.
     onReady: async () => {
@@ -114,6 +152,7 @@ export async function mountTalkView({ outlet, signal }) {
 
   function cleanup() {
     subscription?.close();
+    unsubscribeTranscript?.();
     orb.dispose();
     if (defaultAction) {
       defaultAction.hidden = true;

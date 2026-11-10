@@ -794,6 +794,32 @@ button {
   min-height: 1.4em;
 }
 
+.talk__lines {
+  margin: 16px auto 0;
+  max-width: 36rem;
+  padding: 0 16px;
+  text-align: center;
+}
+
+.talk__line {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.talk__words-toggle {
+  display: block;
+  margin: 16px auto 0;
+  padding: 6px 12px;
+  border: 1px solid var(--text-muted);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
 /* 6. Settings and tools views */
 
 .view--settings,

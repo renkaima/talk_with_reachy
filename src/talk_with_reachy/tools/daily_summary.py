@@ -12,9 +12,10 @@ STAFF_QUESTIONS = (
     "Would you like to add anything about today?",
     "Did anyone do something with Reachy together today?",
 )
-# What the profile has Reachy say when it did not understand someone: "did not understand" since 1.3.11,
+# What the profile has Reachy say when it did not understand someone: "Which one:" (the re-ask from asked_to_repeat)
+# since 1.3.12, "did not understand" in 1.3.11,
 # "did not hear that well" in 1.3.10, and "say it again" before that.
-REPEAT_PHRASES = ("did not understand", "did not hear that well", "say it again")
+REPEAT_PHRASES = ("which one:", "did not understand", "did not hear that well", "say it again")
 
 
 class DailySummary(Tool):

@@ -8,7 +8,7 @@ import importlib
 import threading
 import importlib.util
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Callable, ClassVar, Sequence, TypedDict
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Callable, ClassVar, Sequence, Awaitable, TypedDict
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -46,6 +46,9 @@ class ToolDependencies:
     go_to_sleep: Callable[[], dict[str, Any]] | None = None
     # Seconds until Reachy's current speech has finished playing (0 when quiet), set by the realtime handler.
     seconds_until_reachy_is_quiet: Callable[[], float] | None = None
+    # Called by take_break when a break activity ends, set by the realtime handler: it tells the model how the
+    # break ended (take_break returns as soon as the activity starts, so the model can answer during it).
+    break_ended: Callable[[dict[str, Any]], Awaitable[None]] | None = None
 
 
 class ToolSpec(TypedDict):

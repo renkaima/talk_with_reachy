@@ -1030,8 +1030,8 @@ async def test_run_session_response_lifecycle_toggles_done_event(monkeypatch: An
 
 
 @pytest.mark.asyncio
-async def test_talking_during_break_music_pauses_it_and_tells_the_model(monkeypatch: Any) -> None:
-    """Speech start pauses the music and sends the hidden note; an empty transcript lets the music go on."""
+async def test_talking_during_break_music_pauses_it_and_a_sound_lets_it_go_on(monkeypatch: Any) -> None:
+    """Speech start pauses the music; an empty transcript lets it go on; no note joins the person's words."""
     handler = _session_handler(
         monkeypatch,
         (
@@ -1040,16 +1040,92 @@ async def test_talking_during_break_music_pauses_it_and_tells_the_model(monkeypa
         ),
     )
     monkeypatch.setattr(hf_mod.take_break, "pause_music_for_speech", lambda: True)
-    choices: list[str] = []
-    monkeypatch.setattr(hf_mod.take_break, "choose_after_pause", lambda choice: choices.append(choice) or True)
+    chosen: list[str] = []
+    monkeypatch.setattr(hf_mod.take_break, "choose_after_pause", lambda choice: chosen.append(choice) or True)
     notes: list[str] = []
 
     async def note(text: str) -> None:
         notes.append(text)
 
-    monkeypatch.setattr(handler, "_send_system_note", note)
+    monkeypatch.setattr(handler, "_send_app_note", note)
 
     await handler._run_realtime_session()
 
-    assert notes == [hf_mod.take_break.MUSIC_PAUSED_NOTE]
-    assert choices == ["more"]
+    assert notes == []
+    assert chosen == ["more"]
+
+
+@pytest.mark.parametrize(
+    ("words", "waiting", "stopped", "chosen"),
+    [
+        ("Stop.", False, ["Stop."], []),  # breathing or the game: stop at once
+        ("Don't stop.", False, [], []),
+        ("Oh my god!", True, [], []),  # the music stays paused; the model asks "More music, or stop?"
+        ("More.", True, [], ["more"]),
+        ("Yes.", True, [], ["more"]),
+        ("No.", True, ["No."], []),
+    ],
+)
+def test_words_during_a_break_act_in_code(
+    monkeypatch: Any, words: str, waiting: bool, stopped: list[str], chosen: list[str]
+) -> None:
+    """During a break, the app stops it on "stop" and passes "more" or "no" to the paused music itself."""
+    monkeypatch.setattr(hf_mod.take_break, "running_activity", lambda: "music" if waiting else "breathe")
+    monkeypatch.setattr(hf_mod.take_break, "music_waiting_for_choice", lambda: waiting)
+    stops: list[str] = []
+    picks: list[str] = []
+    monkeypatch.setattr(hf_mod.take_break, "stop_running_break", lambda source, text="": stops.append(text) or True)
+    monkeypatch.setattr(hf_mod.take_break, "choose_after_pause", lambda choice: picks.append(choice) or True)
+
+    hf_mod.HuggingFaceRealtimeHandler._apply_break_words(words)
+
+    assert stops == stopped
+    assert picks == chosen
+
+
+def test_words_do_nothing_when_no_break_runs(monkeypatch: Any) -> None:
+    """Outside a break, "stop" is left to the model."""
+    monkeypatch.setattr(hf_mod.take_break, "running_activity", lambda: None)
+    stop = MagicMock()
+    monkeypatch.setattr(hf_mod.take_break, "stop_running_break", stop)
+
+    hf_mod.HuggingFaceRealtimeHandler._apply_break_words("Stop.")
+
+    stop.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("respond", "replies"), [(True, 1), (False, 0)])
+async def test_break_end_adds_a_note_and_asks_for_a_reply_unless_stopped(respond: bool, replies: int) -> None:
+    """A finished break makes Reachy speak; after a stop, the person's own "stop" already got a reply."""
+    handler = _plain_handler()
+    create = AsyncMock()
+    handler.connection = SimpleNamespace(conversation=SimpleNamespace(item=SimpleNamespace(create=create)))
+
+    await handler._on_break_ended({"note": "The music is over. Say: 'All done.'", "respond": respond})
+
+    item = create.await_args.kwargs["item"]
+    assert item["role"] == "user"
+    assert item["content"][0]["text"].startswith("(App note, not said by the person) The music is over.")
+    assert handler._pending_responses.qsize() == replies
+
+
+@pytest.mark.asyncio
+async def test_paused_music_goes_on_when_no_words_arrive(monkeypatch: Any) -> None:
+    """A sound that pauses the music but never gets a transcript does not leave the music paused."""
+    handler = _session_handler(
+        monkeypatch,
+        (_FakeEvent("input_audio_buffer.speech_started"), _FakeEvent("input_audio_buffer.speech_stopped")),
+    )
+    monkeypatch.setattr(hf_mod, "MUSIC_RESUME_WITHOUT_WORDS_S", 0.0)
+    monkeypatch.setattr(hf_mod.take_break, "pause_music_for_speech", lambda: True)
+    monkeypatch.setattr(hf_mod.take_break, "music_waiting_for_choice", lambda: True)
+    chosen: list[str] = []
+    monkeypatch.setattr(hf_mod.take_break, "choose_after_pause", lambda choice: chosen.append(choice) or True)
+    monkeypatch.setattr(handler, "_send_app_note", AsyncMock())
+
+    await handler._run_realtime_session()
+    assert handler._music_resume_task is not None
+    await handler._music_resume_task
+
+    assert chosen == ["more"]

@@ -32,15 +32,15 @@ A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_re
 
 **In the Day Center mode** (the app starts in this mode; see [STUDY_SETUP.md](STUDY_SETUP.md#day-center-profile))
 
-- *Take a Break*: anyone, or staff on their behalf, can ask for a break. Reachy asks "good or not good?", offers two activities (slow breathing to watch or join, one minute of calm music, or a movement game), and asks "good or not good?" again afterwards. "I don't know" is a full answer, and after "not good" Reachy offers one more break or help from staff. Any activity stops when someone says "stop". During the music Reachy keeps listening: when someone talks, the song pauses and Reachy asks "Do you want more music, or stop?"
+- *Take a Break*: anyone, or staff on their behalf, can ask for a break ("Breathing, or music?") or name an activity, which then starts at once: slow breathing to watch or join, one minute of calm music, or a movement game. Reachy keeps listening during the activity. The app stops it as soon as someone says "stop"; during the music, talking pauses the song and Reachy asks "More music, or stop?". After an activity that ran to the end, Reachy asks once, "How do you feel now: good, or not good?", and after "not good" offers one more break or help from staff.
 - *What's Next*: staff tell Reachy the weekly schedule and today's changes; anyone can ask what comes next.
 - *Daily Summary*: anyone can ask how the day went and hears totals; staff voices also hear who took each break and can add notes.
 - Reachy opens with a clear choice ("Do you want to talk with me, or hear what I can do?"), then follows the person; "yes" to the opening means "talk". It brings up a break or what is next only when someone asks for help, asks what it can do, or says a word such as "tired". When someone does not understand Reachy, it says the same thing again in simpler words.
-- When Reachy asks something, it offers two choices. It treats short or incomplete answers as real requests, and logs each time it asks someone to repeat.
+- When Reachy asks something, it offers two short choices. It treats short or incomplete answers as real requests. When an answer picks neither choice, the app (not the language model) decides what Reachy says: the choice the words sound like ("Upstairs" for "upset"), the two choices once more, or, after the second try, "I will wait here".
 - Reachy talks more slowly (55% of the speech service's speed, at the same pitch, slowed with Sonic, a method made for speech) and uses everyday words.
 - Reachy does not stare or move at random: it follows a face with its head only when someone asks, and stays still when the room is quiet. When someone says "too loud", it offers to be quieter or to start a break.
 - Reachy waits longer before answering (1.2 seconds of silence instead of the speech server's 64 ms), so people who pause mid-sentence can finish.
-- When Reachy does not understand someone, it always says so ("Sorry. Please say it again.") instead of staying silent.
+- Reachy never says "Please say it again", and never says it did not hear words it has.
 - An AAC board with the same words Reachy uses (`deploy/aac/talk_with_reachy.obf`) can be imported into Cboard or other AAC apps.
 
 **For the researcher**
@@ -48,7 +48,7 @@ A sister app, **[Talk with Reachy Math](https://github.com/renkaima/talk_with_re
 - Every utterance, by a person or by Reachy, is logged with its start time, end time, and duration.
 - Each person utterance is labeled with a speaker ID found by voice: `P01` for a participant the researcher enrolled, or `V003` for a voice the app learned on its own.
 - The audio of each person utterance is saved as a WAV clip, so a researcher can check the speaker labels by ear.
-- Robot actions, people talking over Reachy, and connection problems are logged on the same timeline.
+- Robot actions, people talking over Reachy, and connection problems are logged on the same timeline. Each run ends with a count of its problems (for example a question asked twice, or a turn Reachy did not answer), so the runs worth checking are easy to find.
 - The robot uploads all of it to a Google Drive folder every five minutes. No computer needs to be nearby.
 
 ## A study session, step by step

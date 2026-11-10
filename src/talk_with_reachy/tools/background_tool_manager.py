@@ -6,6 +6,7 @@ completion is announced vocally via a silent notification queue.
 """
 
 from __future__ import annotations
+import json
 import time
 import asyncio
 import logging
@@ -198,6 +199,15 @@ class BackgroundToolManager(BaseModel):
             background_tool.status = ToolState.COMPLETED
             logger.debug(f"Background tool completed: {background_tool.tool_name} (id={background_tool.id})")
 
+        try:
+            # What the tool told the model, so a researcher can see why Reachy said what it said next.
+            result_text = json.dumps(
+                {k: v for k, v in (background_tool.result or {}).items() if k != "b64_im"},
+                ensure_ascii=False,
+                default=str,
+            )[:500]
+        except Exception:
+            result_text = ""
         study_log.record_event(
             "tool_finished",
             tool=background_tool.tool_name,
@@ -205,6 +215,7 @@ class BackgroundToolManager(BaseModel):
             duration_s=round(background_tool.completed_at - background_tool.started_at, 2),
             error=background_tool.error,
             call_id=background_tool.id,
+            result=result_text,
         )
         await self._notification_queue.put(background_tool.get_notification())
         logger.debug(f"Queued notification for tool: {background_tool.tool_name} (id={background_tool.id})")

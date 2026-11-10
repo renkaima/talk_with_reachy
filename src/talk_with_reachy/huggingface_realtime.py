@@ -26,7 +26,7 @@ from openai.types.realtime import (
 from websockets.exceptions import ConnectionClosedError
 from openai.types.realtime.realtime_audio_input_turn_detection_param import ServerVad
 
-from talk_with_reachy import study_log, slow_speech
+from talk_with_reachy import choices, study_log, slow_speech
 from talk_with_reachy.tools import core_tools, take_break
 from talk_with_reachy.config import (
     HF_LOCAL_CONNECTION_MODE,
@@ -66,6 +66,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Seconds after speech stops before paused break music goes on by itself if no words were heard.
+MUSIC_RESUME_WITHOUT_WORDS_S: Final = 6.0
 _RESPONSE_DONE_TIMEOUT: Final[float] = 30.0
 _RESPONSE_REJECTION_RETRY_DELAY: Final[float] = 0.5
 
@@ -172,6 +174,12 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         # take_break use this to wait until Reachy has finished saying what will happen.
         self._speech_end_mono = 0.0
         deps.seconds_until_reachy_is_quiet = self.seconds_until_reachy_is_quiet
+        # take_break returns as soon as an activity starts, because this speech server answers nothing while a
+        # tool result is pending; the activity calls this when it ends, so Reachy can say so.
+        deps.break_ended = self._on_break_ended
+        # Whether words were heard since the break music last paused; with none, the music goes on by itself.
+        self._words_since_music_paused = True
+        self._music_resume_task: asyncio.Task[None] | None = None
         # Plays Reachy's voice more slowly when the profile asks for it (speech_speed); set per session.
         self._slower = slow_speech.SpeechSlower(1.0, rate=self.SAMPLE_RATE)
         # A reply that is only a tool call that asks for no follow-up (asked_to_repeat, break_check) would
@@ -509,6 +517,66 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         except Exception as e:
             logger.warning("Failed to send system note: %s", e)
 
+    @staticmethod
+    def _apply_break_words(transcript: str) -> None:
+        """During a break, act on "stop" (and on "more"/"no" while the music waits) at once, in code.
+
+        The model also answers these words, but it can miss them; the activity must stop when someone says stop.
+        """
+        if take_break.running_activity() is None:
+            return
+        if choices.is_stop(transcript):
+            take_break.stop_running_break("words", transcript)
+        elif take_break.music_waiting_for_choice():
+            answer = choices.music_answer(transcript)
+            if answer == "stop":
+                take_break.stop_running_break("words", transcript)
+            elif answer == "more":
+                take_break.choose_after_pause("more")
+
+    async def _resume_music_without_words(self) -> None:
+        """Let the paused break music go on when the sound that paused it had no words (a cough, a noise)."""
+        if self._words_since_music_paused or not take_break.choose_after_pause("more"):
+            return
+        self._words_since_music_paused = True
+        study_log.record_event("music_resumed", by="no_words")
+
+    def _schedule_music_resume_without_words(self) -> None:
+        """Resume the music if no words arrive soon after the speech that paused it (some sounds get no transcript)."""
+        if self._music_resume_task is not None and not self._music_resume_task.done():
+            return
+
+        async def resume_later() -> None:
+            await asyncio.sleep(MUSIC_RESUME_WITHOUT_WORDS_S)
+            await self._resume_music_without_words()
+
+        self._music_resume_task = asyncio.create_task(resume_later(), name="music-resume")
+
+    async def _send_app_note(self, text: str) -> None:
+        """Add a note from the app to the conversation, in time order, without asking for a reply.
+
+        The note is a user message marked as coming from the app. On this speech server a system message would
+        replace the previous one (the voice ID note) instead of joining the conversation.
+        """
+        if not self.connection:
+            return
+        try:
+            await self.connection.conversation.item.create(
+                item={
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": f"(App note, not said by the person) {text}"}],
+                },
+            )
+        except Exception as e:
+            logger.warning("Failed to send app note: %s", e)
+
+    async def _on_break_ended(self, outcome: dict[str, Any]) -> None:
+        """Tell the model that a break activity ended, and ask it to speak unless someone just did."""
+        await self._send_app_note(str(outcome.get("note", "")))
+        if outcome.get("respond"):
+            await self._safe_response_create()
+
     async def _send_startup_greeting_prompt(self) -> None:
         """Prompt the model to open the conversation once the session is ready."""
         if self._startup_greeting_sent or not self.connection:
@@ -828,8 +896,10 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self._slower.reset()
                         self._silent_retry_used = False
                         self.deps.movement_manager.set_listening(True)
+                        # No note to the model here: the server joins a note with the person's next words into
+                        # one message. The profile tells the model that talking pauses the music.
                         if take_break.pause_music_for_speech():
-                            await self._send_system_note(take_break.MUSIC_PAUSED_NOTE)
+                            self._words_since_music_paused = False
                         logger.debug("User speech started")
 
                     if event.type == "input_audio_buffer.speech_stopped":
@@ -839,6 +909,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self._mark_activity("user_speech_stopped")
                         self.deps.movement_manager.set_listening(False)
                         logger.debug("User speech stopped - server will auto-commit with VAD")
+                        if take_break.music_waiting_for_choice() and not self._words_since_music_paused:
+                            self._schedule_music_resume_without_words()
 
                     if event.type == "response.output_audio.done":
                         await self._play_reachy_audio(self._slower.flush())
@@ -897,6 +969,10 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                             self._emit_debounced_partial(current_partial, item_id, sequence_counter)
                         )
 
+                    if event.type == "conversation.item.input_audio_transcription.failed":
+                        logger.debug("Transcription failed")
+                        await self._resume_music_without_words()
+
                     # Handle completed transcription (user finished speaking)
                     if event.type == "conversation.item.input_audio_transcription.completed":
                         self._mark_activity("user_transcription_completed")
@@ -910,8 +986,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         if not transcript:
                             logger.debug("Ignoring empty user transcript")
                             # A sound with no words (for example the music itself) paused the break music: go on.
-                            take_break.choose_after_pause("more")
+                            await self._resume_music_without_words()
                             continue
+                        self._words_since_music_paused = True
 
                         self._turn_user_done_at = time.perf_counter()
                         self._turn_response_created_at = None
@@ -921,6 +998,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
                         await self.output_queue.put(AdditionalOutputs({"role": "user", "content": transcript}))
                         self.study.user_transcript(str(getattr(event, "item_id", "") or ""), transcript)
+                        self._apply_break_words(transcript)
                         self._emit_transcript("user", transcript, True)
 
                     # Handle assistant transcription
@@ -931,6 +1009,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                             AdditionalOutputs({"role": "assistant", "content": event.transcript})
                         )
                         self.study.assistant_transcript(event.transcript or "")
+                        choices.reachy_said(event.transcript or "")
                         self._emit_transcript("assistant", event.transcript or "", True)
 
                     # Handle audio delta
@@ -1012,6 +1091,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         else:
                             self._response_started_or_rejected_event.set()
                             logger.error("Realtime error [%s]: %s (raw=%s)", code, msg, err)
+                            if code != "input_audio_buffer_commit_empty":
+                                study_log.record_event("server_error", code=str(code), message=str(msg)[:300])
 
                         if code == "input_audio_buffer_commit_empty":
                             self.deps.movement_manager.set_listening(False)
@@ -1039,6 +1120,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
                 # Stop background tool manager tasks (listener + cleanup) in all paths.
                 await self.tool_manager.shutdown()
+                # A break activity runs outside the tool manager; stop it with the session.
+                await take_break.cancel_running_break()
 
     # Microphone receive
     async def receive(self, frame: Tuple[int, NDArray[np.int16]]) -> None:

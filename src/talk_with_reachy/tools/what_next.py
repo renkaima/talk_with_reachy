@@ -143,7 +143,10 @@ class WhatNext(Tool):
                 for item in plan
                 if item["time"] >= clock
             ][:UPCOMING_ITEMS]
-            if not answer["next"]:
+            if not plan:
+                # Nothing saved for today is not the same as a day that is over.
+                answer["note"] = "No plan is saved for today. Say: 'I do not have today's plan. Please ask staff.'"
+            elif not answer["next"]:
                 answer["note"] = "That is all for today."
             return answer
 

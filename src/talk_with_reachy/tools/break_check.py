@@ -13,15 +13,14 @@ class BreakCheck(Tool):
 
     name = "break_check"
     description = (
-        "Save the answer to 'Are you feeling good, or not good?', asked again after take_break finishes. "
-        "Use 'no answer' if they did not answer."
+        "Save the answer to 'How do you feel now: good, or not good?', asked once after a break activity "
+        "finished. Use 'unclear' for any other answer."
     )
     needs_response = False
     parameters_schema = {
         "type": "object",
         "properties": {
             "break_id": {"type": "string", "description": "The break_id that take_break returned."},
-            # The same answers as take_break's 'feeling', so each break has a before and an after.
             "answer": {"type": "string", "enum": ["good", "not good", "don't know", "unclear", "no answer"]},
         },
         "required": ["break_id", "answer"],
@@ -37,7 +36,6 @@ class BreakCheck(Tool):
             "break_check", break_id=str(kwargs.get("break_id", "")), answer=answer, speaker_id=speaker_id
         )
         logger.info("Tool call: break_check answer=%s", answer[:80])
-        # Used only when the reply had no speech and the app asks the model to talk (see huggingface_realtime).
         if answer == "not good":
-            return {"saved": answer, "say": "Do you want one more break, or help from staff?"}
+            return {"saved": answer, "say": "One more break, or help from staff?"}
         return {"saved": answer, "say": "Come back any time you need me."}

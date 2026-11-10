@@ -13,8 +13,9 @@ class MusicChoice(Tool):
 
     name = "music_choice"
     description = (
-        "Use only after the break music paused because someone talked. Pass their answer to "
-        "'Do you want more music, or stop?': more plays the rest of the song; stop ends the break."
+        "Use after the break music paused because someone talked, with their answer to 'More music, or stop?': "
+        "more plays the rest of the song; stop ends the break. 'Yes' or 'okay' means more; 'no' means stop. "
+        "The app often applies a short answer by itself; calling this again is harmless."
     )
     needs_response = False
     parameters_schema = {
@@ -28,8 +29,10 @@ class MusicChoice(Tool):
         choice = str(kwargs.get("choice", "")).strip()
         if choice not in ("more", "stop"):
             return {"error": "choice must be 'more' or 'stop'"}
-        if not take_break.choose_after_pause(choice):
-            return {"error": "no music is paused right now"}
+        if choice == "stop":
+            take_break.stop_running_break("tool")
+        else:
+            take_break.choose_after_pause("more")
         logger.info("Tool call: music_choice %s", choice)
-        # Used only when the reply had no speech and the app asks the model to talk (see huggingface_realtime).
+        # The same answer when the app already applied the person's words, so a late call is not an error.
         return {"saved": choice, "say": "More music. Okay." if choice == "more" else "Okay. We stopped."}

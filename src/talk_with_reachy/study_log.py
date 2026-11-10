@@ -22,6 +22,7 @@ account's Google Drive (see ``cloud_upload`` and ``google_drive_upload``).
 
 from __future__ import annotations
 import os
+import re
 import csv
 import json
 import time
@@ -33,9 +34,12 @@ import subprocess
 from typing import Any
 from pathlib import Path
 from datetime import datetime
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from importlib.metadata import PackageNotFoundError, version
+
+from talk_with_reachy import choices
 
 
 logger = logging.getLogger(__name__)
@@ -70,6 +74,17 @@ CSV_COLUMNS = [
 
 # Utterance fields shown in the CSV ``flags`` column when true.
 CSV_FLAGS = ("interrupted", "overlaps_reachy")
+# Events counted in each run's session_problems record: things that went wrong or nearly did, so a researcher
+# can find the runs to look at. "tool_error" counts tool_finished events with an error (not cancellations).
+PROBLEM_EVENTS = {
+    "no_reply",  # someone spoke and Reachy did not answer before they spoke again (or before the run ended)
+    "same_question_again",  # Reachy asked the same question as in its previous turn
+    "asked_to_repeat",  # an answer did not pick one of the two choices
+    "answer_matched",  # an unclear answer was taken as the choice it sounds like
+    "question_given_up",  # Reachy stopped asking after the second unclear answer
+    "silent_reply_retried",  # the model answered with only a tool call and was asked to speak
+    "server_error",  # the speech server reported an error
+}
 
 # Shared by the writer and the uploader so the uploader never reads a half-written line.
 FILE_LOCK = threading.Lock()
@@ -157,6 +172,11 @@ class TranscriptSession:
         self._utterances = 0
         # Per speaker_id, in order of first utterance: speaker, latest name, utterance count, seconds of speech.
         self._speakers: dict[str, dict[str, Any]] = {}
+        # Problems in this run, written as one session_problems record at the end (see PROBLEM_EVENTS).
+        self._problems: Counter[str] = Counter()
+        self._last_question = ""
+        self._same_question_times = 1
+        self._waiting_for_reply_to = ""
         started = datetime.now()
         folder = transcripts_dir(data_dir)
         folder.mkdir(parents=True, exist_ok=True)
@@ -236,6 +256,7 @@ class TranscriptSession:
         }
         self._write(record)
         self._count_speech(speaker, extra, duration)
+        self._check_turn(speaker, text, start_mono)
         score = extra.get("match_score")
         self._csv_row(
             {
@@ -266,8 +287,35 @@ class TranscriptSession:
         stats["utterances"] += 1
         stats["speech_s"] = round(stats["speech_s"] + duration, 3)
 
+    def _check_turn(self, speaker: str, text: str, mono_time: float) -> None:
+        """Note two problems the model cannot report: the same question asked again, and a turn with no reply."""
+        if speaker == "reachy":
+            self._waiting_for_reply_to = ""
+            # The same two choices count as the same question, however they are worded around them.
+            pair = choices.split_choices(text)
+            questions = re.findall(r"[^.?!]*\?", text)
+            if len(pair) == 2:
+                question = "|".join(sorted(choices.canonical(choice) for choice in pair))
+            else:
+                question = re.sub(r"[^a-z ]", "", questions[-1].lower()).strip() if questions else ""
+            if question and question == self._last_question:
+                self._same_question_times += 1
+                self.event(
+                    "same_question_again", mono_time, {"question": text[-200:], "times": self._same_question_times}
+                )
+            else:
+                self._last_question, self._same_question_times = question, 1
+        elif speaker == "person" and text.strip():
+            if self._waiting_for_reply_to:
+                self.event("no_reply", mono_time, {"to": self._waiting_for_reply_to[:200]})
+            self._waiting_for_reply_to = text
+
     def event(self, name: str, mono_time: float, fields: dict[str, Any]) -> None:
         """Append one event (tool call, interruption, system status...)."""
+        if name in PROBLEM_EVENTS or (
+            name == "tool_finished" and fields.get("error") and fields.get("status") != "cancelled"
+        ):
+            self._problems["tool_error" if name == "tool_finished" else name] += 1
         elapsed = self.elapsed_s(mono_time)
         now = _now()
         self._write({"type": "event", "event": name, "time": now, "elapsed_s": elapsed, **fields})
@@ -297,6 +345,14 @@ class TranscriptSession:
                     f"{format_elapsed(stats['speech_s'])} of speech",
                 }
             )
+        if self._waiting_for_reply_to:
+            self._problems["no_reply"] += 1
+        problems = dict(sorted(self._problems.items()))
+        self._write({"type": "session_problems", "time": _now(), "elapsed_s": elapsed, "problems": problems})
+        summary = " ".join(f"{name}={count}" for name, count in problems.items()) or "none found"
+        self._csv_row(
+            {"start": _now(), "elapsed": format_elapsed(elapsed), "kind": "summary", "text": f"problems: {summary}"}
+        )
         self._write({"type": "session_end", "time": _now(), "elapsed_s": elapsed, "utterances": self._utterances})
         self._csv_row({"kind": "event", "start": _now(), "elapsed": format_elapsed(elapsed), "text": "session_end"})
 

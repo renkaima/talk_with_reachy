@@ -14,7 +14,7 @@ from talk_with_reachy.tools.break_check import BreakCheck
     [
         ("good", "Come back any time you need me."),
         ("don't know", "Come back any time you need me."),
-        ("not good", "Do you want one more break, or help from staff?"),
+        ("not good", "One more break, or help from staff?"),
     ],
 )
 async def test_break_check_saves_the_answer_and_offers_more_help_after_not_good(

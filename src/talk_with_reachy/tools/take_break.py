@@ -7,8 +7,9 @@ import shutil
 import asyncio
 import logging
 import tempfile
-from typing import Any, ClassVar
+from typing import Any
 from pathlib import Path
+from dataclasses import field, dataclass
 
 import numpy as np
 from numpy.typing import NDArray
@@ -41,13 +42,10 @@ SILENCE = SOUNDS_DIR / "silence.wav"
 # When the song goes on after a pause, it fades in over this time instead of starting abruptly.
 RESUME_FADE_IN_S = 0.5
 # Longest time the music stays paused without a choice; then the break ends.
-MAX_PAUSE_S = 45.0
-# Hidden note sent to the model when the music pauses because someone started talking.
-MUSIC_PAUSED_NOTE = (
-    "The break music is paused because someone started talking. Answer what they said in one short sentence. "
-    'Then ask: "Do you want more music, or stop?" and call music_choice with "more" or "stop". '
-    'If they already said stop, say "Okay. We stopped." and call music_choice with "stop" without asking.'
-)
+MAX_PAUSE_S = 30.0
+# After "more", the song waits this long for Reachy to start its reply, then for the reply to end, so the song
+# does not play over Reachy's voice.
+REPLY_START_WAIT_S = 3.0
 
 try:
     from talk_with_reachy.dance_emotion_moves import DanceQueueMove
@@ -149,6 +147,7 @@ class BreakMusic:
         self._paused = asyncio.Event()
         self._choice: asyncio.Future[str] | None = None
         self._tmp_dir: Path | None = None
+        self.stop_requested = False
 
     def remaining_s(self) -> float:
         """Seconds of the song still to play."""
@@ -194,8 +193,18 @@ class BreakMusic:
         self._choice.set_result(choice)
         return True
 
+    def waiting_for_choice(self) -> bool:
+        """Tell whether the music is paused and waiting for "more" or "stop"."""
+        return self._choice is not None and not self._choice.done()
+
+    def request_stop(self) -> None:
+        """End the song whether it is playing or paused."""
+        self.stop_requested = True
+        if not self.choose("stop"):
+            self._paused.set()  # wakes the player, which sees stop_requested
+
     async def wait_until_paused(self, seconds: float) -> bool:
-        """Wait up to ``seconds`` for a pause; True if someone started talking."""
+        """Wait up to ``seconds`` for a pause or a stop; True if one came."""
         try:
             await asyncio.wait_for(self._paused.wait(), timeout=seconds)
         except asyncio.TimeoutError:
@@ -216,8 +225,75 @@ class BreakMusic:
             shutil.rmtree(self._tmp_dir, ignore_errors=True)
 
 
+async def wait_for_reply_then_quiet(deps: ToolDependencies) -> None:
+    """Give Reachy up to REPLY_START_WAIT_S to start its reply, then wait until it has finished speaking."""
+    if deps.seconds_until_reachy_is_quiet is None:
+        return
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + REPLY_START_WAIT_S
+    while deps.seconds_until_reachy_is_quiet() <= 0 and loop.time() < deadline:
+        await asyncio.sleep(0.1)
+    await wait_until_reachy_is_quiet(deps)
+
+
+async def play_break_music(
+    deps: ToolDependencies, track: Path, break_id: str, stop: asyncio.Event | None = None
+) -> str:
+    """Play one song with an antenna countdown; return "finished", "stop", or "no answer".
+
+    When someone starts talking, the song stops where it is and waits for "more" (the rest plays, and the
+    countdown goes on from where it was) or "stop". The choice comes from the person's own words (the realtime
+    handler hears "more", "yes", "stop", "no") or from the model's music_choice call.
+    """
+    global _music
+    music = BreakMusic(track)
+    _music = music
+    if stop is not None and stop.is_set():
+        music.request_stop()
+    try:
+        while (remaining := music.remaining_s()) > 0.1:
+            if music.stop_requested:
+                return "stop"
+            sound = await asyncio.to_thread(music.sound_from_position)
+            deps.movement_manager.queue_move(CountdownMove(remaining, music.position_s / music.length_s))
+            music.mark_playing()
+            await asyncio.to_thread(deps.reachy_mini.media.play_sound, str(sound))
+            if not await music.wait_until_paused(remaining + PLAYBACK_LAG_S):
+                break
+            await asyncio.to_thread(deps.reachy_mini.media.play_sound, str(SILENCE))
+            deps.movement_manager.clear_move_queue()
+            if music.stop_requested:
+                return "stop"
+            study_log.record_event("music_paused", break_id=break_id, at_s=round(music.position_s, 1))
+            choice = await music.wait_for_choice()
+            study_log.record_event("music_choice", break_id=break_id, choice=choice)
+            if choice != "more":
+                return choice
+            await wait_for_reply_then_quiet(deps)
+        return "finished"
+    except asyncio.CancelledError:
+        deps.reachy_mini.media.play_sound(str(SILENCE))
+        raise
+    finally:
+        _music = None
+        music.cleanup()
+
+
+@dataclass
+class RunningBreak:
+    """The break activity that is running now."""
+
+    break_id: str
+    activity: str
+    stop: asyncio.Event = field(default_factory=asyncio.Event)
+    stopped_by: str = ""
+    task: "asyncio.Task[None] | None" = None
+
+
 # The song of the break that is running now, if any; the realtime handler pauses it when someone talks.
 _music: BreakMusic | None = None
+# The break that is running now, if any. Only one break runs at a time.
+_break: RunningBreak | None = None
 
 
 def pause_music_for_speech() -> bool:
@@ -230,55 +306,176 @@ def choose_after_pause(choice: str) -> bool:
     return _music.choose(choice) if _music is not None else False
 
 
-async def play_break_music(deps: ToolDependencies, track: Path, break_id: str) -> str:
-    """Play one song with an antenna countdown; return "finished", "stop", or "no answer".
+def music_waiting_for_choice() -> bool:
+    """Tell whether the break music is paused and waiting for "more" or "stop"."""
+    return _music is not None and _music.waiting_for_choice()
 
-    When someone starts talking, the song stops where it is and waits for "more" (the rest plays, and the
-    countdown goes on from where it was) or "stop".
-    """
-    global _music
-    music = BreakMusic(track)
-    _music = music
+
+def running_activity() -> str | None:
+    """Return the activity of the break running now ("breathe", "music", "move"), or None."""
+    if _break is None or _break.stop.is_set():
+        return None
+    return _break.activity
+
+
+def stop_running_break(source: str, words: str = "") -> bool:
+    """Stop the running break now; ``source`` is "words" (the app heard stop) or "tool". False if none runs."""
+    running = _break
+    if running is None or running.stop.is_set():
+        return False
+    running.stopped_by = source
+    running.stop.set()
+    study_log.record_event("break_stop_heard", break_id=running.break_id, source=source, words=words[:200])
+    if _music is not None:
+        _music.request_stop()
+    return True
+
+
+async def cancel_running_break() -> None:
+    """Cancel the running break without telling the model (the session is ending)."""
+    running = _break
+    if running is not None and running.task is not None and not running.task.done():
+        running.task.cancel()
+        try:
+            await running.task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+
+async def _wait_or_stop(stop: asyncio.Event, seconds: float) -> bool:
+    """Wait ``seconds``; return True early if the break was stopped."""
     try:
-        while (remaining := music.remaining_s()) > 0.1:
-            sound = await asyncio.to_thread(music.sound_from_position)
-            deps.movement_manager.queue_move(CountdownMove(remaining, music.position_s / music.length_s))
-            music.mark_playing()
-            await asyncio.to_thread(deps.reachy_mini.media.play_sound, str(sound))
-            if not await music.wait_until_paused(remaining + PLAYBACK_LAG_S):
-                break
-            await asyncio.to_thread(deps.reachy_mini.media.play_sound, str(SILENCE))
-            deps.movement_manager.clear_move_queue()
-            study_log.record_event("music_paused", break_id=break_id, at_s=round(music.position_s, 1))
-            choice = await music.wait_for_choice()
-            study_log.record_event("music_choice", break_id=break_id, choice=choice)
-            if choice != "more":
-                return choice
+        await asyncio.wait_for(stop.wait(), timeout=seconds)
+    except asyncio.TimeoutError:
+        return False
+    return True
+
+
+# What to tell the model when a break ends, by how it ended. The app adds it as a note and, when nobody is
+# talking to Reachy at that moment, asks the model to speak.
+END_NOTES = {
+    "finished": "Say: 'All done. How do you feel now: good, or not good?' When they answer, call break_check "
+    "with break_id {break_id} and their answer.",
+    "stopped": "It stopped because someone said stop. If you have not said it yet, say only: 'Okay. We stopped.' "
+    "Do not ask how they feel.",
+    "no answer": "Nobody chose more music or stop, so it ended. Say only: 'All done.'",
+}
+
+
+async def _run_break(deps: ToolDependencies, running: RunningBreak, tracks: list[Path], started_by: str) -> None:
+    """Run one break activity to its end, then tell the model how it ended."""
+    global _break
+    activity = running.activity
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    outcome = "finished"
+    try:
+        # If the model called take_break without speaking, the app asks it to speak; wait for that too.
+        await wait_for_reply_then_quiet(deps)
+        started = loop.time()
+        if not running.stop.is_set():
+            await play_and_wait(deps, START_CHIME)
+        if running.stop.is_set():
+            outcome = "stopped"
+        elif activity == "breathe":
+            move = GuidedBreathingMove()
+            deps.movement_manager.queue_move(move)
+            if await _wait_or_stop(running.stop, move.duration):
+                deps.movement_manager.clear_move_queue()
+                outcome = "stopped"
+        elif activity == "move":
+            moves = [DanceQueueMove(move_name) for move_name in MOVE_GAME for _ in range(MOVE_REPEATS)]
+            for dance_move in moves:
+                deps.movement_manager.queue_move(dance_move)
+            if await _wait_or_stop(running.stop, sum(dance_move.duration for dance_move in moves)):
+                deps.movement_manager.clear_move_queue()
+                outcome = "stopped"
+        else:
+            music_outcome = await play_break_music(deps, random.choice(tracks), running.break_id, running.stop)
+            outcome = {"finished": "finished", "stop": "stopped"}.get(music_outcome, "no answer")
             await wait_until_reachy_is_quiet(deps)
-        return "finished"
+        await play_and_wait(deps, END_CHIME)
     except asyncio.CancelledError:
-        deps.reachy_mini.media.play_sound(str(SILENCE))
+        deps.movement_manager.clear_move_queue()
+        study_log.record_event(
+            "break_finished",
+            break_id=running.break_id,
+            activity=activity,
+            seconds=round(loop.time() - started, 1),
+            completed=False,
+            ended="cancelled",
+        )
         raise
     finally:
-        _music = None
-        music.cleanup()
+        if _break is running:
+            _break = None
+
+    study_log.record_event(
+        "break_finished",
+        break_id=running.break_id,
+        activity=activity,
+        seconds=round(loop.time() - started, 1),
+        completed=outcome == "finished",
+        ended=outcome,
+        stopped_by=running.stopped_by,
+    )
+    logger.info("Break %s (%s) ended: %s", running.break_id, activity, outcome)
+    if deps.break_ended is not None:
+        note = END_NOTES[outcome].format(break_id=running.break_id)
+        await deps.break_ended(
+            {
+                "status": outcome,
+                "break_id": running.break_id,
+                "activity": activity,
+                "started_by": started_by,
+                "note": f"The {ACTIVITY_WORDS[activity]} is over. {note}",
+                # After a stop, the person's own "stop" already gets a reply; a second one would repeat it.
+                "respond": outcome != "stopped",
+            }
+        )
+
+
+ACTIVITY_WORDS = {"breathe": "breathing", "music": "music", "move": "movement game"}
+# Words the model may use for an activity, mapped to the tool's names.
+ACTIVITY_ALIASES = {
+    "breathe": "breathe",
+    "breathing": "breathe",
+    "breath": "breathe",
+    "breathe with me": "breathe",
+    "music": "music",
+    "song": "music",
+    "listen to music": "music",
+    "move": "move",
+    "moving": "move",
+    "movement": "move",
+    "movement game": "move",
+    "game": "move",
+    "move with me": "move",
+}
+ANNOUNCEMENTS = {
+    "breathe": "Breathing. Okay. Watch my head go up and down, six slow times. Breathe with me if you want. "
+    "Say stop any time.",
+    "music": "Music. Okay. One calm song, for one minute. My antennas go down slowly. When they are down, "
+    "the song is over. Say stop any time.",
+    "move": "Moving. Okay. One short game. Copy my moves if you want. Say stop any time.",
+}
 
 
 class TakeBreak(Tool):
-    """Lead one break activity and wait until it ends."""
+    """Start one break activity; it runs on its own, and the app tells the model when it is over."""
 
     name = "take_break"
     description = (
-        "Lead a short break once the person has chosen one of two activities. "
-        "breathe: six slow breaths (one minute); your head rises and your antennas stand up on each in-breath, "
-        "and people can watch or breathe with you. "
+        "Start a short break activity the person asked for or chose. "
+        "breathe: six slow breaths (one minute); your head rises and your antennas stand up on each in-breath. "
         "music: one calm song (one minute); your antennas fold down slowly to show how much is left. "
-        "If someone talks during the song, it pauses by itself; then ask whether they want more music or to stop, "
-        "and call music_choice. "
+        "If someone talks during the song, it pauses; ask 'More music, or stop?'. "
         "move: one short movement game (about 35 seconds) that anyone nearby can copy. "
         "A soft chime marks the start and a two-note chime marks the end. "
-        "The tool returns when the activity is over."
+        "The tool returns at once; the activity starts when you finish speaking, and a note tells you when it "
+        "is over. If someone says stop during it, call stop_break."
     )
+    needs_response = False
     parameters_schema = {
         "type": "object",
         "properties": {
@@ -292,106 +489,55 @@ class TakeBreak(Tool):
                 "type": "string",
                 "description": "Name of the person taking the break, if known (staff usually say it).",
             },
-            "feeling": {
-                "type": "string",
-                "enum": ["good", "not good", "don't know", "unclear"],
-                "description": "Their answer to 'Are you feeling good, or not good?', or what they already told you.",
-            },
             "feeling_said": {
                 "type": "string",
-                "description": "Their own words about how they feel, if they said them before you asked "
-                "(for example 'I don't feel well').",
+                "description": "Their own words about how they feel, if they said any (for example 'I am upset').",
             },
         },
         "required": ["activity", "started_by"],
     }
-    _running: ClassVar[bool] = False
 
     async def __call__(self, deps: ToolDependencies, **kwargs: Any) -> dict[str, Any]:
-        """Run the chosen activity, then report how long it lasted."""
-        activity = str(kwargs.get("activity", ""))
+        """Start the chosen activity in the background and return at once."""
+        global _break
+        raw = str(kwargs.get("activity", "")).strip().lower()
+        activity = ACTIVITY_ALIASES.get(raw, raw)
         if activity not in ("breathe", "music", "move"):
-            return {"error": f"unknown activity {activity!r}"}
+            return {"error": f"unknown activity {raw!r}", "next": "Call take_break with breathe, music, or move."}
         if activity == "move" and not DANCE_AVAILABLE:
-            return {"error": "the movement game is not available on this robot; offer breathing or music"}
-        if TakeBreak._running:
-            return {"error": "a break is already running"}
+            return {"error": "the movement game is not available on this robot", "say": "Breathing, or music?"}
+        if _break is not None:
+            return {
+                "status": "already running",
+                "activity": _break.activity,
+                "say": f"The {ACTIVITY_WORDS[_break.activity]} is on now. Say stop any time.",
+            }
         tracks = sorted(SOUNDS_DIR.glob("calm_*.wav"))
         if activity == "music" and not tracks:
             logger.error("No music found in %s", SOUNDS_DIR)
-            return {"error": "no music is installed; offer breathing instead"}
+            return {"error": "no music is installed", "say": "I cannot play music now. Do you want breathing?"}
 
         speaker_id, speaker_name = day_center.current_speaker()
         started_by = str(kwargs.get("started_by", "self"))
-        break_id = uuid.uuid4().hex[:8]
+        running = RunningBreak(break_id=uuid.uuid4().hex[:8], activity=activity)
         study_log.record_event(
             "break_started",
-            break_id=break_id,
+            break_id=running.break_id,
             activity=activity,
             started_by=started_by,
             # When staff start a break, the voice is theirs, not the person's taking it.
             person=str(kwargs.get("person") or (speaker_name if started_by == "self" else "")),
-            feeling=str(kwargs.get("feeling", "unclear")),
             feeling_said=str(kwargs.get("feeling_said", ""))[:200],
             speaker_id=speaker_id,
         )
-        logger.info("Tool call: take_break activity=%s break_id=%s", activity, break_id)
-
-        TakeBreak._running = True
-        loop = asyncio.get_running_loop()
-        started = loop.time()
-        finished = False
-        music_outcome = "finished"
-        try:
-            await wait_until_reachy_is_quiet(deps)
-            started = loop.time()
-            await play_and_wait(deps, START_CHIME)
-            if activity == "breathe":
-                move = GuidedBreathingMove()
-                deps.movement_manager.queue_move(move)
-                await asyncio.sleep(move.duration)
-            elif activity == "move":
-                moves = [DanceQueueMove(move_name) for move_name in MOVE_GAME for _ in range(MOVE_REPEATS)]
-                for dance_move in moves:
-                    deps.movement_manager.queue_move(dance_move)
-                await asyncio.sleep(sum(dance_move.duration for dance_move in moves))
-            else:
-                music_outcome = await play_break_music(deps, random.choice(tracks), break_id)
-                await wait_until_reachy_is_quiet(deps)
-            await play_and_wait(deps, END_CHIME)
-            finished = music_outcome == "finished"
-        except asyncio.CancelledError:
-            deps.movement_manager.clear_move_queue()
-            raise
-        finally:
-            TakeBreak._running = False
-            study_log.record_event(
-                "break_finished",
-                break_id=break_id,
-                activity=activity,
-                seconds=round(loop.time() - started, 1),
-                completed=finished,
-            )
-
-        if music_outcome == "stop":
-            return {
-                "status": "stopped",
-                "break_id": break_id,
-                "activity": activity,
-                "next": "The person chose to stop the music. If you have not said it yet, say 'Okay. We stopped.' "
-                "Do not ask how they feel.",
-            }
-        if music_outcome == "no answer":
-            return {
-                "status": "stopped",
-                "break_id": break_id,
-                "activity": activity,
-                "next": "The music stayed paused with no choice, so the break ended. Say 'All done.'",
-            }
+        logger.info("Tool call: take_break activity=%s break_id=%s", activity, running.break_id)
+        _break = running
+        running.task = asyncio.create_task(_run_break(deps, running, tracks, started_by), name="take-break")
         return {
-            "status": "finished",
-            "break_id": break_id,
+            "status": "started",
+            "break_id": running.break_id,
             "activity": activity,
-            "next": "Say 'All done.' Ask again: 'Are you feeling good, or not good?', "
-            "then call break_check with their answer.",
+            "say": ANNOUNCEMENTS[activity],
+            "next": "If you have not said it yet, say the 'say' text. Then stay quiet until the app says the "
+            "activity is over.",
         }

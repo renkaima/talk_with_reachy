@@ -113,3 +113,15 @@ def test_items_need_a_24_hour_time_and_an_activity(bad_items: list[dict[str, str
     """Malformed items are rejected instead of being saved."""
     with pytest.raises(ValueError):
         what_next_module.parse_items(bad_items)
+
+
+@pytest.mark.asyncio
+async def test_with_no_plan_saved_reachy_says_so_instead_of_that_the_day_is_over(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On the robot test, an empty schedule made Reachy say 'That is all for today'; it now sends people to staff."""
+    _speaker(monkeypatch, "V001", "")
+
+    result = await what_next_module.WhatNext()(_deps(), action="next")
+
+    assert result["next"] == [] and "No plan is saved for today" in result["note"]
