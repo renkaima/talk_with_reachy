@@ -235,7 +235,7 @@ async def test_a_second_break_waits_for_a_stopped_one_and_is_refused_while_one_r
     _, first = await _start(deps, activity="breathe", started_by="self")
     await started.wait()
 
-    again = await take_break_module.TakeBreak()(deps, activity="music", started_by="self")
+    again = await take_break_module.TakeBreak()(deps, activity="breathe", started_by="self")
     assert "breathing is on now" in again["error"]  # only the error text reaches the model
 
     take_break_module.stop_running_break("words", "Stop.")
@@ -401,3 +401,28 @@ async def test_saying_stop_during_breathing_stops_it_without_the_model(
     await task
 
     assert _ended(deps)["status"] == "stopped"
+
+
+@pytest.mark.skipif(not take_break_module.DANCE_AVAILABLE, reason="dance library not installed")
+@pytest.mark.asyncio
+async def test_asking_for_another_activity_switches_to_it(events: list[tuple[str, dict[str, Any]]]) -> None:
+    """'Can we move instead?' during breathing stops the breaths, and the game starts after the end chime."""
+    deps = _deps()
+    started = asyncio.Event()
+
+    async def wait_until_stopped(stop: asyncio.Event, _seconds: float) -> bool:
+        started.set()
+        await stop.wait()
+        return True
+
+    take_break_module._wait_or_stop = wait_until_stopped  # type: ignore[assignment]  # undone by monkeypatch
+    _, first = await _start(deps, activity="breathe", started_by="self")
+    await started.wait()
+
+    result, second = await _start(deps, activity="move", started_by="self")
+    started.clear()
+    await started.wait()
+
+    assert result["status"] == "started" and first.done()
+    take_break_module.stop_running_break("words", "Stop.")
+    await second

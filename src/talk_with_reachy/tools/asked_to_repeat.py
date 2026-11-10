@@ -91,11 +91,6 @@ class AskedToRepeat(Tool):
         if choices.is_decline(heard):
             # "No" picks neither choice; asking again would push.
             return matched("neither", {"say": "Okay. I am here if you need me.", "next": "Do not ask again."})
-        if "don't know" in norm or "dont know" in norm or "not sure" in norm:
-            wait = "Okay. I will wait here."
-            if len(options) == 2:
-                wait += f" Say {options[0]}, or {options[1]}, any time."
-            return matched("don't know", {"say": wait + " You can also ask staff.", "next": "Do not ask again."})
         if len(options) == 2:
             choice = choices.match(heard, options)
             if choice is not None:
@@ -111,12 +106,17 @@ class AskedToRepeat(Tool):
                         "next": then or f"Take '{choice}' as their answer and go on as if they had said it.",
                     },
                 )
-        # Words that always do what they say, even right after another question.
-        if choices.match(heard, ["help from staff", "something else"]) == "help from staff":
+        # Whole requests do what they say, even right after another question (exact words only).
+        request = choices.request_in(heard)
+        if request == "staff":
             return matched("staff", {"say": STAFF})
-        activity = choices.match(heard, ["breathing", "music", "move"])
-        if activity is not None:
-            return matched(activity, _activity_step(ACTIVITY[activity]))
+        if request is not None:
+            return matched(request, _activity_step(request))
+        if "don't know" in norm or "dont know" in norm or "not sure" in norm:
+            wait = "Okay. I will wait here."
+            if len(options) == 2:
+                wait += f" Say {options[0]}, or {options[1]}, any time."
+            return matched("don't know", {"say": wait + " You can also ask staff.", "next": "Do not ask again."})
 
         tries = choices.repeats.unclear(options or [heard])
         study_log.record_event("asked_to_repeat", heard=heard, choices=options, tries=tries, speaker_id=speaker_id)

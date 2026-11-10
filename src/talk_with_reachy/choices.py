@@ -57,7 +57,7 @@ NEGATIONS = {"not", "no", "don't", "dont", "never", "isn't", "can't", "cannot", 
 NON_ANSWERS = {"yes", "yeah", "yep", "no", "nope", "okay", "ok", "sure", "maybe", "uh", "um", "hmm", "alright"}
 # After "More music, or stop?", these whole answers (without "reachy", "please", "the", "some") mean more.
 _MORE = {
-    "more", "more music", "yes", "yeah", "yep", "okay", "ok", "sure", "alright", "", "yes more", "go on",
+    "more", "more music", "yes", "yeah", "yep", "okay", "ok", "sure", "alright", "please", "yes more", "go on",
     "keep going", "continue", "play", "music", "listen to music", "play music", "play more", "more song",
 }  # fmt: skip
 # Words left out when a choice is turned into keywords.
@@ -153,7 +153,7 @@ def match(heard: str, options: list[str]) -> str | None:
         words = text.split()
         for option in options:
             for i, word in enumerate(words):
-                if any(w in NEGATIONS for w in words[max(0, i - 2) : i]):
+                if _negation_before(words, i):
                     continue
                 if len(word) >= 5 and any(
                     difflib.SequenceMatcher(None, word, key).ratio() >= 0.8
@@ -170,14 +170,25 @@ def match(heard: str, options: list[str]) -> str | None:
     return None
 
 
+def _negation_before(words: list[str], i: int) -> bool:
+    """Tell whether one of the four words before ``words[i]`` negates it ("I don't want to breathe").
+
+    "Don't know" is not a negation of what follows: "I don't know, I feel sick" picks sick.
+    """
+    for j in range(max(0, i - 4), i):
+        if words[j] in NEGATIONS and not (j + 1 < len(words) and words[j + 1] in ("know", "think")):
+            return True
+    return False
+
+
 def _negated(text: str, phrase: str) -> bool:
-    """Tell whether ``phrase`` comes within two words after a negation, unless the phrase is itself negative."""
+    """Tell whether ``phrase`` comes right after a negation, unless the phrase is itself negative."""
     if any(word in NEGATIONS for word in phrase.split()):
         return False
     words = text.split()
     size = len(phrase.split())
     for i in range(len(words) - size + 1):
-        if " ".join(words[i : i + size]) == phrase and any(w in NEGATIONS for w in words[max(0, i - 2) : i]):
+        if " ".join(words[i : i + size]) == phrase and _negation_before(words, i):
             return True
     return False
 
@@ -208,6 +219,30 @@ def is_stop(text: str) -> bool:
         if word == "stop":
             return all(lead in _STOP_LEAD for lead in words[:i])
     return False
+
+
+# Whole requests that do what they say even right after another question (after "reachy", "please", "i want",
+# "can i have", "let's" are left out). Only these exact words count: room talk such as "Grace, come here" or
+# "we played a game" must not start an activity.
+REQUESTS = {
+    "staff": {"help", "help me", "i need help", "staff", "help from staff", "i need staff", "get staff", "i need a staff"},
+    "music": {"music", "play music", "listen to music", "music please", "some music", "the music"},
+    "breathe": {"breathe", "breathing", "breathe with me", "let's breathe", "breathe with you"},
+    "move": {"move", "move with me", "the game", "play the game", "moving"},
+}  # fmt: skip
+
+
+def request_in(text: str) -> str | None:
+    """Return "staff", "music", "breathe", or "move" when the whole utterance is that request, else None."""
+    norm = normalize(text)
+    for lead in ("reachy ", "please ", "i want ", "i want to ", "can i have ", "can we ", "let's ", "lets "):
+        if norm.startswith(lead):
+            norm = norm[len(lead) :]
+    norm = norm.removesuffix(" please").removesuffix(" reachy").strip()
+    for name, phrases in REQUESTS.items():
+        if norm in phrases:
+            return name
+    return None
 
 
 def is_decline(text: str) -> bool:
@@ -262,6 +297,10 @@ class RepeatCounter:
         """Forget the question (it was answered)."""
         self._key, self._count = "", 0
 
+    def counted_recently(self, seconds: float = 20.0) -> bool:
+        """Tell whether an unclear answer was counted in the last ``seconds`` (asked_to_repeat just ran)."""
+        return bool(self._count) and time.monotonic() - self._last < seconds
+
 
 # What Reachy said last, so asked_to_repeat can find the choices when the model does not pass them.
 _last_reachy_words = ""
@@ -282,8 +321,13 @@ def reachy_said(text: str) -> None:
         key = repeats.key_for(pair)
         if repeats.current_key and key != repeats.current_key:
             repeats.reset()  # another question: its count starts over
-        elif len(previous) == 2 and repeats.key_for(previous) == key and "which one:" not in text.lower():
-            # The model asked the same question again on its own ("Which one:" comes from asked_to_repeat,
+        elif (
+            len(previous) == 2
+            and repeats.key_for(previous) == key
+            and "which one" not in text.lower()
+            and not repeats.counted_recently()
+        ):
+            # The model asked the same question again on its own ("Which one" comes from asked_to_repeat,
             # which has already counted that try).
             repeats.unclear(pair)
     _last_reachy_words = text.strip()

@@ -1165,3 +1165,16 @@ async def test_a_silent_reply_to_the_end_of_a_break_is_asked_for_once_more(monke
     await handler._run_realtime_session()
 
     assert notes == ["Say your reply out loud now."] and requests == [{"_tag": "break_end_retry"}]
+
+
+@pytest.mark.asyncio
+async def test_break_end_reply_after_someone_talked_comes_after_their_reply() -> None:
+    """If the person said words, their reply comes first; the held reply is asked for after it, not dropped."""
+    handler = _plain_handler()
+    handler.connection = SimpleNamespace(conversation=SimpleNamespace(item=SimpleNamespace(create=AsyncMock())))
+    handler._user_turn_open = True
+    await handler._on_break_ended({"note": "The breathing is over.", "respond": True})
+
+    await handler._release_held_break_end_reply(person_said_words=True)
+
+    assert handler._pending_responses.qsize() == 0 and handler._break_end_after_reply is True

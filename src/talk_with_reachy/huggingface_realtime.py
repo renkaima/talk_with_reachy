@@ -69,7 +69,9 @@ logger = logging.getLogger(__name__)
 # Seconds after speech stops before paused break music goes on by itself if no words were heard.
 MUSIC_RESUME_WITHOUT_WORDS_S: Final = 6.0
 # Longest pause of the break music when speech starts but never stops or gets a transcript.
-MUSIC_RESUME_IF_SILENT_S: Final = 12.0
+MUSIC_RESUME_IF_SILENT_S: Final = 25.0
+# Longest time the reply to the end of a break waits for a person to finish talking.
+BREAK_END_HOLD_MAX_S: Final = 10.0
 _RESPONSE_DONE_TIMEOUT: Final[float] = 30.0
 _RESPONSE_REJECTION_RETRY_DELAY: Final[float] = 0.5
 
@@ -188,6 +190,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         self._response_tag: str | None = None
         self._user_turn_open = False
         self._break_end_reply_held = False
+        self._break_end_after_reply = False
+        self._hold_timer: asyncio.Task[None] | None = None
+        self._reply_text = ""
         # Plays Reachy's voice more slowly when the profile asks for it (speech_speed); set per session.
         self._slower = slow_speech.SpeechSlower(1.0, rate=self.SAMPLE_RATE)
         # A reply that is only a tool call that asks for no follow-up (asked_to_repeat, break_check) would
@@ -590,16 +595,35 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         await self._send_app_note(str(outcome.get("note", "")))
         if outcome.get("respond"):
             if self._user_turn_open:
-                self._break_end_reply_held = True
+                self._hold_break_end_reply()
             else:
                 await self._safe_response_create(_tag="break_end")
 
+    def _hold_break_end_reply(self) -> None:
+        """Hold the reply to the end of a break while someone talks; release it after BREAK_END_HOLD_MAX_S anyway."""
+        self._break_end_reply_held = True
+        if self._hold_timer is not None and not self._hold_timer.done():
+            self._hold_timer.cancel()
+
+        async def release_later() -> None:
+            await asyncio.sleep(BREAK_END_HOLD_MAX_S)
+            await self._release_held_break_end_reply(person_said_words=False)
+
+        self._hold_timer = asyncio.create_task(release_later(), name="break-end-hold")
+
     async def _release_held_break_end_reply(self, person_said_words: bool) -> None:
-        """After a person's turn: their reply covers the note if they said words; otherwise ask for it now."""
-        if self._break_end_reply_held:
-            self._break_end_reply_held = False
-            if not person_said_words:
-                await self._safe_response_create(_tag="break_end")
+        """After a person's turn, ask for the held reply: now, or after the reply to their words."""
+        if not self._break_end_reply_held:
+            return
+        self._break_end_reply_held = False
+        timer = self._hold_timer
+        if timer is not None and not timer.done() and asyncio.current_task() is not timer:
+            timer.cancel()
+        if person_said_words:
+            # Their words get the server's own reply first; if that reply does not finish the break, ask after it.
+            self._break_end_after_reply = True
+        else:
+            await self._safe_response_create(_tag="break_end")
 
     async def _send_startup_greeting_prompt(self) -> None:
         """Prompt the model to open the conversation once the session is ready."""
@@ -650,14 +674,17 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
             except asyncio.CancelledError:
                 return
 
-            # Parallel tool calls enqueue duplicate empty requests; coalesce to one, keeping a tagged request.
-            while not kwargs and not self._pending_responses.empty():
-                try:
-                    kwargs = self._pending_responses.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
+            # Requests that carry nothing but a tag (tool follow-ups, the end of a break) are coalesced into one
+            # reply, which sees every result and note; the tag is kept so a silent reply can be asked for again.
             kwargs = dict(kwargs)
             tag = kwargs.pop("_tag", None)
+            while not kwargs and not self._pending_responses.empty():
+                try:
+                    queued = dict(self._pending_responses.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+                tag = tag or queued.pop("_tag", None)
+                kwargs = queued
 
             sent = False
             max_retries = 5
@@ -682,6 +709,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                     await self.connection.response.create(**kwargs)
                 except Exception as e:
                     logger.debug("_response_sender_loop: send failed: %s", e)
+                    self._sent_tag = None
                     self._response_done_event.set()
                     break
 
@@ -695,6 +723,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
                 # Check if the receiver loop observed an asynchronous rejection.
                 if self._last_response_rejected:
+                    self._sent_tag = None
                     attempts += 1
                     if attempts >= max_retries:
                         logger.debug("response.create rejected %d times; giving up", attempts)
@@ -862,6 +891,10 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
     async def _run_realtime_session(self) -> None:
         """Establish and manage a single realtime session."""
+        # A new session starts with no person turn open and no reply held from the last one.
+        self._user_turn_open = False
+        self._break_end_reply_held = False
+        self._break_end_after_reply = False
         tool_specs = get_tool_specs()
         logger.info(
             "Tools to be used in conversation: %s",
@@ -957,6 +990,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self._response_spoke = False
                         self._calls_this_response = set()
                         self._response_tag, self._sent_tag = self._sent_tag, None
+                        self._reply_text = ""
+                        if take_break.music_waiting_for_choice():
+                            self._cancel_music_resume()  # Reachy is answering words; the person will choose
                         self.study.response_created()
                         self._mark_activity("response_created")
                         self.deps.movement_manager.set_speaking(True)
@@ -974,16 +1010,24 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self.deps.movement_manager.set_speaking(False)
                         if not self._response_spoke:
                             self._silent_calls |= self._calls_this_response
+                        status = getattr(getattr(event, "response", None), "status", None)
                         if (
                             self._response_tag == "break_end"
                             and not self._response_spoke
                             and not self._calls_this_response
                         ):
-                            # The server's own rules tell the model not to comment after a physical action, so
-                            # the reply after a break can come back empty; ask once more, out loud.
-                            study_log.record_event("silent_reply_retried", tool="break_end")
-                            await self._send_app_note("Say your reply out loud now.")
-                            await self._safe_response_create(_tag="break_end_retry")
+                            if status == "cancelled" or self._user_turn_open:
+                                self._hold_break_end_reply()  # someone started talking: ask after their turn
+                            else:
+                                # The server's own rules tell the model not to comment after a physical action,
+                                # so the reply after a break can come back empty; ask once more, out loud.
+                                study_log.record_event("silent_reply_retried", tool="break_end")
+                                await self._send_app_note("Say your reply out loud now.")
+                                await self._safe_response_create(_tag="break_end_retry")
+                        elif self._break_end_after_reply and status != "cancelled" and not self._user_turn_open:
+                            self._break_end_after_reply = False
+                            if "how do you feel" not in self._reply_text.lower():
+                                await self._safe_response_create(_tag="break_end")
                         self._response_tag = None
                         self._response_done_event.set()
                         self._response_started_or_rejected_event.set()
@@ -1057,6 +1101,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         )
                         self.study.assistant_transcript(event.transcript or "")
                         choices.reachy_said(event.transcript or "")
+                        self._reply_text += " " + (event.transcript or "")
                         self._emit_transcript("assistant", event.transcript or "", True)
 
                     # Handle audio delta
@@ -1128,7 +1173,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         msg = getattr(err, "message", str(err) if err else "unknown error")
                         code = getattr(err, "code", "") or getattr(err, "type", "")
 
-                        if code == "conversation_already_has_active_response":
+                        if code in ("conversation_already_has_active_response", "function_call_output_pending"):
                             # response.create was rejected.  The sender worker
                             # is waiting on _response_done_event; when the active
                             # response finishes it will wake up and see this flag.

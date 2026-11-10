@@ -89,3 +89,38 @@ def test_repeats_are_counted_per_question_in_a_row() -> None:
     assert counter.unclear(["breathe with me", "listen to music"], now=5) == 2
     assert counter.unclear(["sick", "upset"], now=6) == 1
     assert counter.unclear(["sick", "upset"], now=6 + choices.REPEAT_WINDOW_S + 1) == 1
+
+
+@pytest.mark.parametrize(
+    ("heard", "options", "expected"),
+    [
+        ("I don't want to breathe", ["breathing", "music"], None),
+        ("I don't know, I feel sick", ["sick", "upset"], "sick"),
+        ("I don't feel good", ["good", "not good"], "not good"),
+    ],
+)
+def test_negation_is_read_in_context(heard: str, options: list[str], expected: str | None) -> None:
+    """A negated choice is not taken; "don't know" does not negate what follows."""
+    assert choices.match(heard, options) == expected
+
+
+@pytest.mark.parametrize(
+    ("words", "expected"),
+    [
+        ("I need help.", "staff"),
+        ("Reachy, play music please", "music"),
+        ("Breathe with me.", "breathe"),
+        ("Grace, come here.", None),  # room talk must not start breathing
+        ("We played a game.", None),
+        ("helpful", None),
+        ("Reachy?", None),
+    ],
+)
+def test_only_whole_requests_start_something_after_another_question(words: str, expected: str | None) -> None:
+    """Requests must be the whole utterance, so mishearings and chat do not start an activity."""
+    assert choices.request_in(words) == expected
+
+
+def test_a_name_alone_does_not_resume_the_music() -> None:
+    """'Reachy?' to get attention leaves the song paused."""
+    assert choices.music_answer("Reachy?") is None

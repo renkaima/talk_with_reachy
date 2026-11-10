@@ -545,9 +545,12 @@ class TakeBreak(Tool):
                 "error": "the movement game is not available on this robot; say 'I cannot move now. Breathing, or music?'"
             }
         if _break is not None and not _break.stop.is_set():
-            # Only the error text reaches the model, and an error always gets a spoken reply.
-            words = ACTIVITY_WORDS[_break.activity]
-            return {"error": f"a break is already running; say 'The {words} is on now. Say stop any time.'"}
+            if _break.activity == activity:
+                # Only the error text reaches the model, and an error always gets a spoken reply.
+                words = ACTIVITY_WORDS[activity]
+                return {"error": f"this break is already running; say 'The {words} is on now. Say stop any time.'"}
+            # Another activity was asked for: stop this one; the new one starts after its end chime.
+            stop_running_break("tool", f"switch to {activity}")
         previous = _break.task if _break is not None else None
         tracks = sorted(SOUNDS_DIR.glob("calm_*.wav"))
         if activity == "music" and not tracks:
