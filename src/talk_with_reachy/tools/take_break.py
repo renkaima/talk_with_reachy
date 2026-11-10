@@ -593,6 +593,6 @@ class TakeBreak(Tool):
             "break_id": running.break_id,
             "activity": activity,
             "say": ANNOUNCEMENTS[activity],
-            "next": "If you have not said it yet, say the 'say' text. While it runs, follow TAKE A BREAK step 3 "
-            "(during the music: answer, then ask 'More music, or stop?'). A note tells you when it is over.",
+            "next": "If you have not said it yet, say the 'say' text. While it runs, answer anything in one short "
+            "sentence (during the music: answer, then ask 'More music, or stop?'). A note tells you when it is over.",
         }

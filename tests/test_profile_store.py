@@ -77,12 +77,13 @@ def test_day_center_profile_speaks_more_slowly_in_the_default_voice() -> None:
     assert (default.speech_speed, default.voice) == (1.0, None)
 
 
-def test_day_center_profile_has_no_random_head_movements() -> None:
-    """Without move_head, the only idle action left in the Day Center profile is staying still."""
+def test_day_center_profile_moves_only_when_asked() -> None:
+    """Dances, emotions, and head moves are there on request, but idle_moves keeps Reachy still when it is quiet."""
     day_center = read_profile_from_directory("day_center", DEFAULT_PROFILES_DIRECTORY / "day_center")
 
-    assert "move_head" not in day_center.default_tools
-    assert not {"dance", "play_emotion"} & set(day_center.default_tools)
+    assert {"dance", "play_emotion", "move_head"} <= set(day_center.default_tools)
+    assert day_center.idle_moves is False
+    assert "go_to_sleep" not in day_center.default_tools
 
 
 def test_profile_listing_requires_profile_document(tmp_path: Path) -> None:

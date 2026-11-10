@@ -32,6 +32,7 @@ _PROFILE_METADATA_FIELDS = {
     "hidden",
     "turn_silence_ms",
     "speech_speed",
+    "idle_moves",
 }
 _STORE_LOCK = threading.Lock()
 
@@ -53,6 +54,8 @@ class ProfileDefinition:
     turn_silence_ms: int | None = None
     # How fast Reachy's voice plays, from 0.5 to 1 (1, the default, plays the speech service's audio unchanged).
     speech_speed: float = 1.0
+    # Whether Reachy may dance, show an emotion, or turn its head on its own when the room is quiet.
+    idle_moves: bool = True
 
 
 def canonical_profile_name(profile: str | None) -> str:
@@ -136,6 +139,9 @@ def _parse_profile_document(source_path: Path) -> ProfileDefinition:
     speech_speed = metadata.get("speech_speed", 1.0)
     if not isinstance(speech_speed, (int, float)) or isinstance(speech_speed, bool) or not 0.5 <= speech_speed <= 1.0:
         raise ProfileFormatError(f"Invalid speech_speed in {source_path}: expected a number from 0.5 to 1.")
+    idle_moves = metadata.get("idle_moves", True)
+    if not isinstance(idle_moves, bool):
+        raise ProfileFormatError(f"Invalid idle_moves in {source_path}: expected true or false.")
 
     instructions = "\n".join(lines[closing_index + 1 :]).strip()
     if not instructions:
@@ -148,6 +154,7 @@ def _parse_profile_document(source_path: Path) -> ProfileDefinition:
         hidden=hidden,
         turn_silence_ms=turn_silence_ms,
         speech_speed=float(speech_speed),
+        idle_moves=idle_moves,
     )
 
 

@@ -9,6 +9,7 @@ from collections.abc import Callable
 import numpy as np
 from numpy.typing import NDArray
 
+from talk_with_reachy.prompts import get_session_idle_moves
 from talk_with_reachy.streaming import AdditionalOutputs, AsyncStreamHandler, wait_for_item
 from talk_with_reachy.idle_policy import start_idle_tool_call
 from talk_with_reachy.tools.core_tools import ToolDependencies, get_tool_specs
@@ -100,6 +101,9 @@ class ConversationHandler(AsyncStreamHandler, ABC):
             return
 
         available_tool_names = {spec["name"] for spec in get_tool_specs()}
+        if not get_session_idle_moves():
+            # The profile allows these moves only when someone asks; when the room is quiet, Reachy stays still.
+            available_tool_names -= {"dance", "play_emotion", "move_head"}
         await start_idle_tool_call(
             deps=self.deps,
             tool_manager=self.tool_manager,

@@ -1201,3 +1201,21 @@ async def test_a_cancelled_break_end_reply_waits_for_the_person(monkeypatch: Any
     assert requests == [] and handler._break_end_reply_held is True
     assert handler._hold_timer is not None
     handler._hold_timer.cancel()
+
+
+@pytest.mark.asyncio
+async def test_idle_moves_off_leaves_only_staying_still(monkeypatch: Any) -> None:
+    """With idle_moves = false, the quiet-room action cannot be a dance, an emotion, or a head turn."""
+    import talk_with_reachy.conversation_handler as handler_mod
+
+    handler = _plain_handler()
+    handler.connection = MagicMock()
+    names = [{"name": n} for n in ("dance", "play_emotion", "move_head", "idle_do_nothing", "take_break")]
+    monkeypatch.setattr(handler_mod, "get_tool_specs", lambda: names)
+    monkeypatch.setattr(handler_mod, "get_session_idle_moves", lambda: False)
+    start = AsyncMock()
+    monkeypatch.setattr(handler_mod, "start_idle_tool_call", start)
+
+    await handler.send_idle_signal(60.0)
+
+    assert start.await_args.kwargs["available_tool_names"] == {"idle_do_nothing", "take_break"}

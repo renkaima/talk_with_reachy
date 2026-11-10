@@ -94,6 +94,15 @@ def get_session_speech_speed() -> float:
         return 1.0
 
 
+def get_session_idle_moves() -> bool:
+    """Return whether the active profile lets Reachy move on its own when the room is quiet."""
+    try:
+        return _active_profile().idle_moves
+    except (FileNotFoundError, ProfileFormatError) as exc:
+        logger.warning("Failed to load the active profile idle setting: %s", exc)
+        return True
+
+
 def get_session_greeting_prompt() -> str:
     """Return the active profile greeting prompt or the app default."""
     try:
