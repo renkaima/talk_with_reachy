@@ -256,6 +256,8 @@ async def play_break_music(
             if music.stop_requested:
                 return "stop"
             sound = await asyncio.to_thread(music.sound_from_position)
+            if music.stop_requested:
+                return "stop"
             deps.movement_manager.queue_move(CountdownMove(remaining, music.position_s / music.length_s))
             music.mark_playing()
             await asyncio.to_thread(deps.reachy_mini.media.play_sound, str(sound))
@@ -266,11 +268,16 @@ async def play_break_music(
             if music.stop_requested:
                 return "stop"
             study_log.record_event("music_paused", break_id=break_id, at_s=round(music.position_s, 1))
-            choice = await music.wait_for_choice()
-            study_log.record_event("music_choice", break_id=break_id, choice=choice)
-            if choice != "more":
-                return choice
+            # The time to choose starts once Reachy has answered, not while it is still talking.
             await wait_for_reply_then_quiet(deps)
+            choice = await music.wait_for_choice()
+            study_log.record_event(
+                "music_choice", break_id=break_id, choice="more" if choice == "more_now" else choice
+            )
+            if choice not in ("more", "more_now"):
+                return choice
+            if choice == "more":
+                await wait_for_reply_then_quiet(deps)  # "more_now": a sound with no words, so no reply is coming
         return "finished"
     except asyncio.CancelledError:
         deps.reachy_mini.media.play_sound(str(SILENCE))
@@ -359,13 +366,20 @@ async def _wait_or_stop(stop: asyncio.Event, seconds: float) -> bool:
 END_NOTES = {
     "finished": "Say: 'All done. How do you feel now: good, or not good?' When they answer, call break_check "
     "with break_id {break_id} and their answer.",
-    "stopped": "It stopped because someone said stop. If you have not said it yet, say only: 'Okay. We stopped.' "
-    "Do not ask how they feel.",
+    # Information only: this note gets no reply of its own and joins the person's next words in one message.
+    "stopped": "It was stopped. Do not ask how they feel.",
     "no answer": "Nobody chose more music or stop, so it ended. Say only: 'All done.'",
+    "error": "It ended early. Say only: 'All done.'",
 }
 
 
-async def _run_break(deps: ToolDependencies, running: RunningBreak, tracks: list[Path], started_by: str) -> None:
+async def _run_break(
+    deps: ToolDependencies,
+    running: RunningBreak,
+    tracks: list[Path],
+    started_by: str,
+    previous: "asyncio.Task[None] | None" = None,
+) -> None:
     """Run one break activity to its end, then tell the model how it ended."""
     global _break
     activity = running.activity
@@ -373,6 +387,9 @@ async def _run_break(deps: ToolDependencies, running: RunningBreak, tracks: list
     started = loop.time()
     outcome = "finished"
     try:
+        if previous is not None:
+            # The break before this one was stopped and is still playing its end chime.
+            await asyncio.wait({previous}, timeout=20)
         # If the model called take_break without speaking, the app asks it to speak; wait for that too.
         await wait_for_reply_then_quiet(deps)
         started = loop.time()
@@ -397,7 +414,6 @@ async def _run_break(deps: ToolDependencies, running: RunningBreak, tracks: list
             music_outcome = await play_break_music(deps, random.choice(tracks), running.break_id, running.stop)
             outcome = {"finished": "finished", "stop": "stopped"}.get(music_outcome, "no answer")
             await wait_until_reachy_is_quiet(deps)
-        await play_and_wait(deps, END_CHIME)
     except asyncio.CancelledError:
         deps.movement_manager.clear_move_queue()
         study_log.record_event(
@@ -408,8 +424,20 @@ async def _run_break(deps: ToolDependencies, running: RunningBreak, tracks: list
             completed=False,
             ended="cancelled",
         )
+        if _break is running:
+            _break = None
         raise
+    except Exception:
+        # A failure (for example of the speaker) must not end the break in silence.
+        logger.exception("Break %s (%s) failed", running.break_id, activity)
+        deps.movement_manager.clear_move_queue()
+        outcome = "error"
+    try:
+        await play_and_wait(deps, END_CHIME)
+    except Exception:
+        logger.exception("End chime failed")
     finally:
+        # Cleared after the end chime, so a new break waits for it (see "previous").
         if _break is running:
             _break = None
 
@@ -516,12 +544,11 @@ class TakeBreak(Tool):
             return {
                 "error": "the movement game is not available on this robot; say 'I cannot move now. Breathing, or music?'"
             }
-        if _break is not None:
-            return {
-                "status": "already running",
-                "activity": _break.activity,
-                "say": f"The {ACTIVITY_WORDS[_break.activity]} is on now. Say stop any time.",
-            }
+        if _break is not None and not _break.stop.is_set():
+            # Only the error text reaches the model, and an error always gets a spoken reply.
+            words = ACTIVITY_WORDS[_break.activity]
+            return {"error": f"a break is already running; say 'The {words} is on now. Say stop any time.'"}
+        previous = _break.task if _break is not None else None
         tracks = sorted(SOUNDS_DIR.glob("calm_*.wav"))
         if activity == "music" and not tracks:
             logger.error("No music found in %s", SOUNDS_DIR)
@@ -542,12 +569,12 @@ class TakeBreak(Tool):
         )
         logger.info("Tool call: take_break activity=%s break_id=%s", activity, running.break_id)
         _break = running
-        running.task = asyncio.create_task(_run_break(deps, running, tracks, started_by), name="take-break")
+        running.task = asyncio.create_task(_run_break(deps, running, tracks, started_by, previous), name="take-break")
         return {
             "status": "started",
             "break_id": running.break_id,
             "activity": activity,
             "say": ANNOUNCEMENTS[activity],
-            "next": "If you have not said it yet, say the 'say' text. Then stay quiet until the app says the "
-            "activity is over.",
+            "next": "If you have not said it yet, say the 'say' text. While it runs, follow TAKE A BREAK step 3 "
+            "(during the music: answer, then ask 'More music, or stop?'). A note tells you when it is over.",
         }

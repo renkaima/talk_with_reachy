@@ -15,6 +15,8 @@ async def test_music_choice_passes_the_answer_on_and_is_harmless_when_late(monke
     calls: list[str] = []
     monkeypatch.setattr(take_break, "choose_after_pause", lambda choice: calls.append(choice) or False)
     monkeypatch.setattr(take_break, "stop_running_break", lambda source, words="": calls.append(source) or False)
+    running = {"activity": "music"}
+    monkeypatch.setattr(take_break, "running_activity", lambda: running["activity"])
     deps = ToolDependencies(reachy_mini=MagicMock(), movement_manager=MagicMock())
 
     result: dict[str, Any] = await MusicChoice()(deps, choice="more")
@@ -22,6 +24,8 @@ async def test_music_choice_passes_the_answer_on_and_is_harmless_when_late(monke
     assert (await MusicChoice()(deps, choice="stop"))["say"] == "Okay. We stopped."
     assert "error" in await MusicChoice()(deps, choice="louder")
     assert calls == ["more", "tool"]
+    running["activity"] = None  # the song is over: "more" must not be confirmed
+    assert "the song is over" in (await MusicChoice()(deps, choice="more"))["error"]
 
 
 @pytest.mark.asyncio

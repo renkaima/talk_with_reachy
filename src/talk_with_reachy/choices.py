@@ -23,7 +23,25 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "sick": ("sick", "six", "seek", "thick", "ill"),
     "upset": ("upset", "upstairs", "up set", "a set", "sad", "angry", "mad"),
     "good": ("good", "fine", "great", "better", "well"),
-    "not good": ("not good", "bad", "not well", "no good", "not so good", "worse", "not okay", "not fine"),
+    "not good": (
+        "not good",
+        "bad",
+        "not well",
+        "no good",
+        "not so good",
+        "worse",
+        "not okay",
+        "not fine",
+        "not great",
+        "sad",
+        "tired",
+        "don't feel good",
+        "don't feel well",
+        "dont feel good",
+        "dont feel well",
+        "not feeling good",
+        "not feeling well",
+    ),  # fmt: skip
     "break": ("break", "brake", "a break"),
     "something else": ("something else", "something", "else", "nothing"),
     "staff": ("staff", "help", "helper"),
@@ -33,17 +51,21 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "more": ("more", "more music", "again", "go on", "keep going", "continue", "play"),
     "stop": ("stop", "no more", "enough", "done", "finish", "finished"),
 }
+# A hit right after one of these ("I don't feel good", "not music") does not pick that choice.
+NEGATIONS = {"not", "no", "don't", "dont", "never", "isn't", "can't", "cannot", "won't", "didn't", "doesn't", "hate"}
 # These never pick one of two choices: "yes" to "breathing, or music?" says neither.
 NON_ANSWERS = {"yes", "yeah", "yep", "no", "nope", "okay", "ok", "sure", "maybe", "uh", "um", "hmm", "alright"}
-# After "More music, or stop?", these mean more.
-_YES = {"yes", "yeah", "yep", "okay", "ok", "sure", "alright", "please", "yes please", "okay please"}
+# After "More music, or stop?", these whole answers (without "reachy", "please", "the", "some") mean more.
+_MORE = {
+    "more", "more music", "yes", "yeah", "yep", "okay", "ok", "sure", "alright", "", "yes more", "go on",
+    "keep going", "continue", "play", "music", "listen to music", "play music", "play more", "more song",
+}  # fmt: skip
 # Words left out when a choice is turned into keywords.
 STOPWORDS = {
     "do", "you", "want", "to", "the", "a", "an", "me", "with", "or", "feel", "feeling", "are", "is", "it",
     "for", "of", "some", "be", "i", "my", "your", "listen", "like", "would", "which", "one", "from",
     "what", "can", "how", "when", "that", "this",
 }  # fmt: skip
-_NEGATIONS = {"dont", "don't", "not", "never"}
 # A question asked again within this time counts as the same try; after it the count starts over.
 REPEAT_WINDOW_S = 180.0
 # The second unclear answer ends the asking.
@@ -104,9 +126,9 @@ def split_choices(question: str) -> list[str]:
     if not match:
         return []
     first = re.sub(
-        r"^(do you (want|like|feel|need)( to)?|are you( feeling)?|would you like( to)?|which one:?|is it)\s+",
+        r"^(do you (want|like|feel|need)( to)?|are you( feeling)?|would you like( to)?|is it)\s+",
         "",
-        match.group(1).strip(),
+        match.group(1).rsplit(":", 1)[-1].strip(),  # "Which one: breathing", "How do you feel now: good"
         flags=re.IGNORECASE,
     )
     found = [first.strip(" ,:"), match.group(2).strip(" ,:")]
@@ -119,43 +141,72 @@ def match(heard: str, options: list[str]) -> str | None:
     text = normalize(heard)
     if not text or text in NON_ANSWERS:
         return None
-    hits: dict[str, int] = {}
+    hits: dict[str, str] = {}
     for option in options:
-        for phrase in keywords(option):
-            if _contains(text, phrase):
-                hits[option] = max(hits.get(option, 0), len(phrase))
+        for phrase in sorted(keywords(option), key=len, reverse=True):
+            if _contains(text, phrase) and not _negated(text, phrase):
+                hits[option] = phrase
+                break
     if not hits:
-        # Close spellings of a keyword ("breath" for "breathe", "musics" for "music").
+        # Close spellings of a longer keyword ("breath" for "breathe", "musics" for "music"); short words such as
+        # "six" for "sick" are listed as aliases instead.
+        words = text.split()
         for option in options:
-            for word in text.split():
-                if any(
+            for i, word in enumerate(words):
+                if any(w in NEGATIONS for w in words[max(0, i - 2) : i]):
+                    continue
+                if len(word) >= 5 and any(
                     difflib.SequenceMatcher(None, word, key).ratio() >= 0.8
                     for key in keywords(option)
-                    if " " not in key
+                    if " " not in key and len(key) >= 5
                 ):
-                    hits[option] = 1
+                    hits[option] = word
     if len(hits) == 1:
         return next(iter(hits))
     if len(hits) == 2:
-        # "not good" also contains "good": the longer phrase wins.
-        (a, la), (b, lb) = sorted(hits.items(), key=lambda item: -item[1])
-        return a if la > lb else None
+        # "not good" contains "good": the longer phrase wins only when it contains the other one.
+        (a, pa), (b, pb) = sorted(hits.items(), key=lambda item: -len(item[1]))
+        return a if pa != pb and _contains(pa, pb) else None
     return None
 
 
+def _negated(text: str, phrase: str) -> bool:
+    """Tell whether ``phrase`` comes within two words after a negation, unless the phrase is itself negative."""
+    if any(word in NEGATIONS for word in phrase.split()):
+        return False
+    words = text.split()
+    size = len(phrase.split())
+    for i in range(len(words) - size + 1):
+        if " ".join(words[i : i + size]) == phrase and any(w in NEGATIONS for w in words[max(0, i - 2) : i]):
+            return True
+    return False
+
+
+# Words that may come before "stop" in a request to stop ("Reachy, can we stop?"). Any other word before it
+# ("you can say stop any time", "I don't want to stop", "when does it stop") means it is not a request.
+_STOP_LEAD = {
+    "please", "reachy", "okay", "ok", "oh", "can", "could", "we", "you", "i", "want", "to", "just", "now", "lets",
+    "let's", "and", "so", "yes", "no", "hey",
+}  # fmt: skip
+# Whole utterances that ask to stop without the word "stop".
+_STOP_PHRASES = {
+    "no more", "no more music", "no more please", "enough", "that's enough", "thats enough", "enough please",
+    "turn it off", "turn off", "turn the music off", "turn off the music", "music off", "i'm done", "im done",
+    "i am done", "done", "finished", "i'm finished", "im finished", "all done",
+}  # fmt: skip
+
+
 def is_stop(text: str) -> bool:
-    """Tell whether a short utterance asks to stop ("stop", "stop please", "no more", "enough"), not "don't stop"."""
+    """Tell whether an utterance asks to stop ("stop", "Reachy, stop the music", "I'm done"), not "don't stop"."""
     norm = normalize(text)
     words = norm.split()
     if not words or len(words) > 8:
         return False
-    for phrase in ("no more", "that's enough", "thats enough", "enough", "turn it off"):
-        if _contains(norm, phrase):
-            return True
+    if norm in _STOP_PHRASES:
+        return True
     for i, word in enumerate(words):
-        if word in ("stop", "stopped"):
-            before = " ".join(words[max(0, i - 2) : i])
-            return not any(_contains(before, neg) for neg in _NEGATIONS)
+        if word == "stop":
+            return all(lead in _STOP_LEAD for lead in words[:i])
     return False
 
 
@@ -169,9 +220,11 @@ def music_answer(text: str) -> str | None:
     norm = normalize(text)
     if not norm or len(norm.split()) > 6:
         return None
-    if is_stop(norm) or norm in {"no", "nope", "no thanks", "no thank you", "done", "i'm done", "im done"}:
+    if is_stop(norm) or norm in {"no", "nope", "no thanks", "no thank you"}:
         return "stop"
-    if norm in _YES or match(norm, ["more"]) == "more" or _contains(norm, "music"):
+    # Only these exact answers mean more: "The music is too loud" or "I don't like this music" are left to the model.
+    trimmed = " ".join(word for word in norm.split() if word not in {"reachy", "please", "the", "some"})
+    if trimmed in _MORE:
         return "more"
     return None
 
@@ -185,10 +238,20 @@ class RepeatCounter:
         self._count = 0
         self._last = 0.0
 
+    @staticmethod
+    def key_for(options: list[str]) -> str:
+        """Return one key for a question's choices, whatever their order and wording."""
+        return "|".join(sorted(canonical(option) for option in options))
+
+    @property
+    def current_key(self) -> str:
+        """Return the key of the question being counted ("" if none)."""
+        return self._key
+
     def unclear(self, options: list[str], now: float | None = None) -> int:
         """Note one more unclear answer to the question with ``options``; return how many in a row."""
         now = time.monotonic() if now is None else now
-        key = "|".join(sorted(canonical(option) for option in options))
+        key = self.key_for(options)
         if key != self._key or now - self._last > REPEAT_WINDOW_S:
             self._key, self._count = key, 0
         self._count += 1
@@ -216,10 +279,13 @@ def reachy_said(text: str) -> None:
         return
     pair, previous = split_choices(text), split_choices(_last_reachy_words)
     if len(pair) == 2:
-        if len(previous) == 2 and {canonical(c) for c in pair} == {canonical(c) for c in previous}:
+        key = repeats.key_for(pair)
+        if repeats.current_key and key != repeats.current_key:
+            repeats.reset()  # another question: its count starts over
+        elif len(previous) == 2 and repeats.key_for(previous) == key and "which one:" not in text.lower():
+            # The model asked the same question again on its own ("Which one:" comes from asked_to_repeat,
+            # which has already counted that try).
             repeats.unclear(pair)
-        else:
-            repeats.reset()
     _last_reachy_words = text.strip()
 
 

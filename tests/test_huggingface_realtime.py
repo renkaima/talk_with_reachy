@@ -1052,7 +1052,7 @@ async def test_talking_during_break_music_pauses_it_and_a_sound_lets_it_go_on(mo
     await handler._run_realtime_session()
 
     assert notes == []
-    assert chosen == ["more"]
+    assert chosen == ["more_now"]
 
 
 @pytest.mark.parametrize(
@@ -1106,7 +1106,7 @@ async def test_break_end_adds_a_note_and_asks_for_a_reply_unless_stopped(respond
 
     item = create.await_args.kwargs["item"]
     assert item["role"] == "user"
-    assert item["content"][0]["text"].startswith("(App note, not said by the person) The music is over.")
+    assert item["content"][0]["text"].startswith("(App note, not said by the person: The music is over.")
     assert handler._pending_responses.qsize() == replies
 
 
@@ -1128,4 +1128,40 @@ async def test_paused_music_goes_on_when_no_words_arrive(monkeypatch: Any) -> No
     assert handler._music_resume_task is not None
     await handler._music_resume_task
 
-    assert chosen == ["more"]
+    assert chosen == ["more_now"]
+
+
+@pytest.mark.asyncio
+async def test_break_end_reply_waits_while_someone_is_talking() -> None:
+    """While a person talks, the reply is held; their words get the server's own reply, a wordless sound gets ours."""
+    handler = _plain_handler()
+    handler.connection = SimpleNamespace(conversation=SimpleNamespace(item=SimpleNamespace(create=AsyncMock())))
+    handler._user_turn_open = True
+
+    await handler._on_break_ended({"note": "The breathing is over.", "respond": True})
+    assert handler._pending_responses.qsize() == 0
+
+    await handler._release_held_break_end_reply(person_said_words=False)
+    assert handler._pending_responses.get_nowait() == {"_tag": "break_end"}
+
+
+@pytest.mark.asyncio
+async def test_a_silent_reply_to_the_end_of_a_break_is_asked_for_once_more(monkeypatch: Any) -> None:
+    """The speech server's rules can leave the reply after a break empty; the app asks once more, out loud."""
+    handler = _session_handler(monkeypatch, (_FakeEvent("response.created"), _FakeEvent("response.done")))
+    handler._sent_tag = "break_end"  # the response.create just sent was the one asked for at the end of a break
+    notes: list[str] = []
+    requests: list[dict[str, Any]] = []
+
+    async def note(text: str) -> None:
+        notes.append(text)
+
+    async def create(**kwargs: Any) -> None:
+        requests.append(kwargs)
+
+    monkeypatch.setattr(handler, "_send_app_note", note)
+    monkeypatch.setattr(handler, "_safe_response_create", create)
+
+    await handler._run_realtime_session()
+
+    assert notes == ["Say your reply out loud now."] and requests == [{"_tag": "break_end_retry"}]

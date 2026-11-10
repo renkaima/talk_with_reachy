@@ -34,10 +34,12 @@ async def test_a_misheard_answer_is_taken_as_the_choice_it_sounds_like(
 ) -> None:
     """'Grace with you' (heard on the robot for 'breathe with you') picks breathing; 'Upstairs' picks upset."""
     result = await _ask(heard="Grace with you.", choices=["breathing", "music"])
-    assert result["they_chose"] == "breathing" and result["say"] == "Breathing. Okay."
+    assert result["they_chose"] == "breathe" and result["say"].startswith("Breathing. Okay. Watch my head")
+    assert "call take_break with activity 'breathe'" in result["next"]  # the step goes on, not just the echo
 
     result = await _ask(heard="Upstairs.", choices=["sick", "upset"])
     assert result["they_chose"] == "upset"
+    assert result["say"] == "Upset. Okay. I am sorry you are upset. Breathing, or music?"
     assert [name for name, _ in recorded] == ["answer_matched", "answer_matched"]
 
 
@@ -52,14 +54,13 @@ async def test_the_question_is_asked_once_more_and_then_reachy_waits(
 
     assert first["say"] == "Which one: breathing, or music?"
     assert second["say"].startswith("I will wait here.") and "breathe with me" in second["say"]
-    assert third["say"].startswith("I will wait here.")
+    assert third["say"] == "I am here."  # not the whole wait sentence again
     assert "Please say it again" not in str([first, second, third])
     assert [name for name, _ in recorded] == [
         "asked_to_repeat",
         "asked_to_repeat",
         "question_given_up",
         "asked_to_repeat",
-        "question_given_up",
     ]
 
 
@@ -109,3 +110,17 @@ async def test_a_question_asked_again_without_the_tool_still_counts(
     result = await _ask(heard="Yes.", choices=["breathing", "music"])
 
     assert result["say"].startswith("I will wait here.")
+
+
+@pytest.mark.asyncio
+async def test_help_or_an_activity_named_after_another_question_does_what_it_says(
+    recorded: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """'I need help' or 'music please' after 'Sick, or upset?' is not asked again."""
+    staff = await _ask(heard="I need help.", choices=["sick", "upset"])
+    music = await _ask(heard="music please", choices=["a break", "talk"])
+    unsure = await _ask(heard="I don't know.", choices=["sick", "upset"])
+
+    assert staff["say"] == "Okay. Please go to a staff member, or wave to one."
+    assert music["they_chose"] == "music" and music["say"].startswith("Music. Okay.")
+    assert unsure["say"].startswith("Okay. I will wait here.") and "asked_to_repeat" not in [n for n, _ in recorded]

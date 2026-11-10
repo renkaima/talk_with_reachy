@@ -303,6 +303,8 @@ class TranscriptSession:
                 self.event(
                     "same_question_again", mono_time, {"question": text[-200:], "times": self._same_question_times}
                 )
+            elif not question and "i will wait here" in text.lower():
+                pass  # keep the question, so asking it again after giving up is counted
             else:
                 self._last_question, self._same_question_times = question, 1
         elif speaker == "person" and text.strip():

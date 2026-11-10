@@ -219,15 +219,33 @@ async def test_stop_while_the_song_plays_ends_it(short_song: list[tuple[str, dic
 
 
 @pytest.mark.asyncio
-async def test_a_second_break_is_not_started_while_one_runs(events: list[tuple[str, dict[str, Any]]]) -> None:
-    """Asking again during a break says what is on now instead of starting another."""
+async def test_a_second_break_waits_for_a_stopped_one_and_is_refused_while_one_runs(
+    events: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """Asking again during a break gets a spoken refusal; after a stop, a new break starts once the first ended."""
     deps = _deps()
-    _, task = await _start(deps, activity="breathe", started_by="self")
+    started = asyncio.Event()
+
+    async def wait_until_stopped(stop: asyncio.Event, _seconds: float) -> bool:
+        started.set()
+        await stop.wait()
+        return True
+
+    take_break_module._wait_or_stop = wait_until_stopped  # type: ignore[assignment]  # undone by monkeypatch
+    _, first = await _start(deps, activity="breathe", started_by="self")
+    await started.wait()
 
     again = await take_break_module.TakeBreak()(deps, activity="music", started_by="self")
-    await task
+    assert "breathing is on now" in again["error"]  # only the error text reaches the model
 
-    assert again["status"] == "already running" and "breathing is on now" in again["say"]
+    take_break_module.stop_running_break("words", "Stop.")
+    result, second = await _start(deps, activity="breathe", started_by="self")
+    assert result["status"] == "started"
+    started.clear()
+    await started.wait()
+    assert first.done()  # the second one began only after the first had ended
+    take_break_module.stop_running_break("words", "Stop.")
+    await second
 
 
 def test_nothing_happens_when_no_music_is_playing() -> None:

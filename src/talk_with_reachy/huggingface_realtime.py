@@ -68,6 +68,8 @@ logger = logging.getLogger(__name__)
 
 # Seconds after speech stops before paused break music goes on by itself if no words were heard.
 MUSIC_RESUME_WITHOUT_WORDS_S: Final = 6.0
+# Longest pause of the break music when speech starts but never stops or gets a transcript.
+MUSIC_RESUME_IF_SILENT_S: Final = 12.0
 _RESPONSE_DONE_TIMEOUT: Final[float] = 30.0
 _RESPONSE_REJECTION_RETRY_DELAY: Final[float] = 0.5
 
@@ -180,8 +182,12 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         # Whether words were heard since the break music last paused; with none, the music goes on by itself.
         self._words_since_music_paused = True
         self._music_resume_task: asyncio.Task[None] | None = None
-        # Set while the reply asked for after a break ends is due; a silent one is asked for once more.
-        self._break_end_reply_due = False
+        # The reply asked for when a break ends is tagged, so a silent one can be asked for once more. While a
+        # person is talking, the request is held: their own turn gets a reply that sees the note.
+        self._sent_tag: str | None = None
+        self._response_tag: str | None = None
+        self._user_turn_open = False
+        self._break_end_reply_held = False
         # Plays Reachy's voice more slowly when the profile asks for it (speech_speed); set per session.
         self._slower = slow_speech.SpeechSlower(1.0, rate=self.SAMPLE_RATE)
         # A reply that is only a tool call that asks for no follow-up (asked_to_repeat, break_check) would
@@ -538,18 +544,24 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
     async def _resume_music_without_words(self) -> None:
         """Let the paused break music go on when the sound that paused it had no words (a cough, a noise)."""
-        if self._words_since_music_paused or not take_break.choose_after_pause("more"):
+        self._cancel_music_resume()
+        if self._words_since_music_paused or not take_break.choose_after_pause("more_now"):
             return
         self._words_since_music_paused = True
         study_log.record_event("music_resumed", by="no_words")
 
-    def _schedule_music_resume_without_words(self) -> None:
-        """Resume the music if no words arrive soon after the speech that paused it (some sounds get no transcript)."""
+    def _cancel_music_resume(self) -> None:
         if self._music_resume_task is not None and not self._music_resume_task.done():
-            return
+            self._music_resume_task.cancel()
+        self._music_resume_task = None
+
+    def _schedule_music_resume_without_words(self, delay_s: float) -> None:
+        """Resume the music if no words arrive within ``delay_s`` (some sounds get no transcript)."""
+        self._cancel_music_resume()
 
         async def resume_later() -> None:
-            await asyncio.sleep(MUSIC_RESUME_WITHOUT_WORDS_S)
+            await asyncio.sleep(delay_s)
+            self._music_resume_task = None
             await self._resume_music_without_words()
 
         self._music_resume_task = asyncio.create_task(resume_later(), name="music-resume")
@@ -567,7 +579,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                 item={
                     "type": "message",
                     "role": "user",
-                    "content": [{"type": "input_text", "text": f"(App note, not said by the person) {text}"}],
+                    "content": [{"type": "input_text", "text": f"(App note, not said by the person: {text})"}],
                 },
             )
         except Exception as e:
@@ -577,8 +589,17 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         """Tell the model that a break activity ended, and ask it to speak unless someone just did."""
         await self._send_app_note(str(outcome.get("note", "")))
         if outcome.get("respond"):
-            self._break_end_reply_due = True
-            await self._safe_response_create()
+            if self._user_turn_open:
+                self._break_end_reply_held = True
+            else:
+                await self._safe_response_create(_tag="break_end")
+
+    async def _release_held_break_end_reply(self, person_said_words: bool) -> None:
+        """After a person's turn: their reply covers the note if they said words; otherwise ask for it now."""
+        if self._break_end_reply_held:
+            self._break_end_reply_held = False
+            if not person_said_words:
+                await self._safe_response_create(_tag="break_end")
 
     async def _send_startup_greeting_prompt(self) -> None:
         """Prompt the model to open the conversation once the session is ready."""
@@ -629,12 +650,14 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
             except asyncio.CancelledError:
                 return
 
-            # Parallel tool calls enqueue duplicate empty requests; coalesce to one.
+            # Parallel tool calls enqueue duplicate empty requests; coalesce to one, keeping a tagged request.
             while not kwargs and not self._pending_responses.empty():
                 try:
-                    self._pending_responses.get_nowait()
+                    kwargs = self._pending_responses.get_nowait()
                 except asyncio.QueueEmpty:
                     break
+            kwargs = dict(kwargs)
+            tag = kwargs.pop("_tag", None)
 
             sent = False
             max_retries = 5
@@ -654,6 +677,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
                 self._last_response_rejected = False
                 self._response_started_or_rejected_event.clear()
+                self._sent_tag = tag
                 try:
                     await self.connection.response.create(**kwargs)
                 except Exception as e:
@@ -901,8 +925,10 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self.deps.movement_manager.set_listening(True)
                         # No note to the model here: the server joins a note with the person's next words into
                         # one message. The profile tells the model that talking pauses the music.
+                        self._user_turn_open = True
                         if take_break.pause_music_for_speech():
                             self._words_since_music_paused = False
+                            self._schedule_music_resume_without_words(MUSIC_RESUME_IF_SILENT_S)
                         logger.debug("User speech started")
 
                     if event.type == "input_audio_buffer.speech_stopped":
@@ -913,7 +939,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self.deps.movement_manager.set_listening(False)
                         logger.debug("User speech stopped - server will auto-commit with VAD")
                         if take_break.music_waiting_for_choice() and not self._words_since_music_paused:
-                            self._schedule_music_resume_without_words()
+                            self._schedule_music_resume_without_words(MUSIC_RESUME_WITHOUT_WORDS_S)
 
                     if event.type == "response.output_audio.done":
                         await self._play_reachy_audio(self._slower.flush())
@@ -930,6 +956,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self._slower.reset()  # nothing left over from a response cut off by a lost connection
                         self._response_spoke = False
                         self._calls_this_response = set()
+                        self._response_tag, self._sent_tag = self._sent_tag, None
                         self.study.response_created()
                         self._mark_activity("response_created")
                         self.deps.movement_manager.set_speaking(True)
@@ -947,14 +974,17 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         self.deps.movement_manager.set_speaking(False)
                         if not self._response_spoke:
                             self._silent_calls |= self._calls_this_response
-                        if self._break_end_reply_due:
+                        if (
+                            self._response_tag == "break_end"
+                            and not self._response_spoke
+                            and not self._calls_this_response
+                        ):
                             # The server's own rules tell the model not to comment after a physical action, so
                             # the reply after a break can come back empty; ask once more, out loud.
-                            self._break_end_reply_due = False
-                            if not self._response_spoke and not self._calls_this_response:
-                                study_log.record_event("silent_reply_retried", tool="break_end")
-                                await self._send_app_note("Say your reply out loud now.")
-                                await self._safe_response_create()
+                            study_log.record_event("silent_reply_retried", tool="break_end")
+                            await self._send_app_note("Say your reply out loud now.")
+                            await self._safe_response_create(_tag="break_end_retry")
+                        self._response_tag = None
                         self._response_done_event.set()
                         self._response_started_or_rejected_event.set()
                         self.study.response_done()
@@ -982,7 +1012,9 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
                     if event.type == "conversation.item.input_audio_transcription.failed":
                         logger.debug("Transcription failed")
+                        self._user_turn_open = False
                         await self._resume_music_without_words()
+                        await self._release_held_break_end_reply(person_said_words=False)
 
                     # Handle completed transcription (user finished speaking)
                     if event.type == "conversation.item.input_audio_transcription.completed":
@@ -994,12 +1026,16 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
                         await self._cancel_partial_transcript_task()
 
+                        self._user_turn_open = False
                         if not transcript:
                             logger.debug("Ignoring empty user transcript")
                             # A sound with no words (for example the music itself) paused the break music: go on.
                             await self._resume_music_without_words()
+                            await self._release_held_break_end_reply(person_said_words=False)
                             continue
                         self._words_since_music_paused = True
+                        self._cancel_music_resume()
+                        await self._release_held_break_end_reply(person_said_words=True)
 
                         self._turn_user_done_at = time.perf_counter()
                         self._turn_response_created_at = None

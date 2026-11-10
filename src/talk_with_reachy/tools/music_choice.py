@@ -31,8 +31,9 @@ class MusicChoice(Tool):
             return {"error": "choice must be 'more' or 'stop'"}
         if choice == "stop":
             take_break.stop_running_break("tool")
-        else:
-            take_break.choose_after_pause("more")
+        elif not take_break.choose_after_pause("more") and take_break.running_activity() != "music":
+            # Only the error text reaches the model, and an error always gets a spoken reply.
+            return {"error": "the song is over; say 'The song is over.'"}
         logger.info("Tool call: music_choice %s", choice)
         # The same answer when the app already applied the person's words, so a late call is not an error.
         return {"saved": choice, "say": "More music. Okay." if choice == "more" else "Okay. We stopped."}
