@@ -139,3 +139,35 @@ def test_a_name_alone_does_not_resume_the_music() -> None:
 def test_hurt_sick_or_scared_is_heard_unless_negated(words: str, expected: bool) -> None:
     """'I feel sick' goes to staff; 'I am not sick' does not."""
     assert choices.says_unwell(words) is expected
+
+
+@pytest.mark.parametrize(
+    ("words", "level"),
+    [
+        ("I hurt myself.", "urgent"),
+        ("I am scared.", "urgent"),
+        ("My head hurts.", "minor"),
+        ("I got caught with cold and my nose is runny.", "minor"),
+        ("I have a headache and my arm hurts.", "urgent"),  # anything urgent makes it urgent
+        ("I am not sick.", None),
+        ("I am tired.", None),  # tired stays a reason for a break, not a health complaint
+    ],
+)
+def test_urgent_and_minor_health_words_are_told_apart(words: str, level: str | None) -> None:
+    """A cold or a headache gets the calm staff sentence; hurt, sick, or scared gets the urgent one."""
+    assert choices.unwell_level(words) == level
+
+
+@pytest.mark.parametrize(
+    ("words", "answer"),
+    [
+        ("Not good.", "not good"),
+        ("Good.", "good"),
+        ("Bad.", "not good"),
+        ("I don't know.", "don't know"),
+        ("Yes.", "unclear"),
+    ],
+)
+def test_answers_to_the_question_after_a_break(words: str, answer: str) -> None:
+    """The app reads the answer to 'How do you feel now: good, or not good?' the way the model should."""
+    assert choices.after_break_answer(words) == answer

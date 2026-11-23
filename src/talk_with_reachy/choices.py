@@ -246,13 +246,52 @@ def request_in(text: str) -> str | None:
 
 
 # Words that send someone to staff at once (CALM AND SAFE), wherever they come in a conversation.
+# Hurt, sick, or scared: "Please tell a staff member now. This is important." (CALM AND SAFE).
 HEALTH_WORDS = ("sick", "ill", "hurt", "hurts", "pain", "scared", "afraid", "bleeding")
+# A cold or a headache: a kind sentence and "Staff can help you with that." (decision of 2026-11-20, after a tester's
+# runny nose got the urgent sentence). Longer phrases first, so "my head hurts" is not read as "hurts".
+MINOR_HEALTH_PHRASES = (
+    "my head hurts",
+    "head hurts",
+    "runny nose",
+    "stuffy nose",
+    "sore throat",
+    "headache",
+    "coughing",
+    "cough",
+    "sneezing",
+    "cold",
+)
+
+
+def unwell_level(text: str) -> str | None:
+    """Return "urgent" for hurt, sick, or scared, "minor" for a cold or a headache, or None.
+
+    Negated words do not count ("I am not sick"); an urgent word anywhere makes the whole answer urgent.
+    """
+    rest = normalize(text)
+    minor = False
+    for phrase in MINOR_HEALTH_PHRASES:
+        if _contains(rest, phrase) and not _negated(rest, phrase):
+            minor = True
+            rest = re.sub(rf"(?<![a-z']){re.escape(phrase)}(?![a-z'])", " ", rest)
+    if any(_contains(rest, word) and not _negated(rest, word) for word in HEALTH_WORDS):
+        return "urgent"
+    return "minor" if minor else None
 
 
 def says_unwell(text: str) -> bool:
     """Tell whether someone says they are hurt, sick, or scared ("I feel sick"), not "I am not sick"."""
+    return unwell_level(text) == "urgent"
+
+
+def after_break_answer(text: str) -> str:
+    """Return "good", "not good", "don't know", or "unclear" for an answer to "How do you feel now: good, or not good?"."""
     norm = normalize(text)
-    return any(_contains(norm, word) and not _negated(norm, word) for word in HEALTH_WORDS)
+    if "don't know" in norm or "dont know" in norm or "not sure" in norm:
+        return "don't know"
+    choice = match(text, ["good", "not good"])
+    return canonical(choice) if choice is not None else "unclear"
 
 
 def is_decline(text: str) -> bool:

@@ -1221,3 +1221,161 @@ async def test_idle_moves_off_leaves_only_staying_still(monkeypatch: Any) -> Non
     await handler.send_idle_signal(60.0)
 
     assert start.await_args.kwargs["available_tool_names"] == {"idle_do_nothing", "take_break"}
+
+
+def _tone(seconds: float, rate: int = 16000) -> np.ndarray:
+    """Return a loud 220 Hz tone standing in for a spoken cue."""
+    t = np.arange(int(seconds * rate)) / rate
+    return (np.sin(2 * np.pi * 220 * t) * 8000).astype(np.int16)
+
+
+def _cue_events(text: str, status: str = "completed") -> list[_FakeEvent]:
+    pcm = np.concatenate([np.zeros(1600, dtype=np.int16), _tone(0.8), np.zeros(1600, dtype=np.int16)])
+    return [
+        _FakeEvent("response.created"),
+        _FakeEvent("response.output_audio.delta", delta=base64.b64encode(pcm.tobytes()).decode()),
+        _FakeEvent("response.output_audio_transcript.done", transcript=text),
+        _FakeEvent("response.output_audio.done"),
+        _FakeEvent("response.done", response=SimpleNamespace(status=status)),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("said", "status", "saved"),
+    [
+        ("Breathe in.", "completed", True),
+        ("Breathe in, and relax.", "completed", False),
+        ("Breathe in.", "cancelled", False),
+    ],
+)
+def test_a_breathing_cue_is_kept_and_saved_instead_of_played(
+    monkeypatch: Any, tmp_path: Any, said: str, status: str, saved: bool
+) -> None:
+    """The cue's audio never reaches the speaker or the transcript; only the exact words are saved, slowed."""
+    monkeypatch.setenv(hf_mod.study_log.DATA_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(hf_mod, "get_session_speech_speed", lambda: 0.55)
+    hf_mod.breath_cues.set_current("voice-a", 0.55)
+    handler = _plain_handler()
+    loop = asyncio.new_event_loop()
+    try:
+        handler._cue_result = loop.create_future()
+        handler._sent_tag = "cue:in"
+        handler._response_done_event.set()
+
+        taken = [handler._take_cue_event(event) for event in _cue_events(said, status)]
+
+        assert taken == [True] * 5
+        assert handler._cue_result.result() is saved
+    finally:
+        loop.close()
+    assert handler.output_queue.empty()  # nothing played and no transcript line
+    assert handler._response_done_event.is_set() and handler._cue_capture is None
+    path = hf_mod.breath_cues.cue_path("in")
+    assert path.is_file() is saved
+    if saved:
+        import wave
+
+        with wave.open(str(path), "rb") as handle:
+            seconds = handle.getnframes() / handle.getframerate()
+        assert 1.2 < seconds < 1.8  # 0.8 s of words at 55% speed, silence trimmed
+
+
+def test_events_of_ordinary_replies_are_not_taken_as_cues() -> None:
+    """Without a cue request, response.created belongs to the conversation."""
+    handler = _plain_handler()
+    handler._sent_tag = "break_end"
+
+    assert handler._take_cue_event(_FakeEvent("response.created")) is False
+    assert handler._take_cue_event(_FakeEvent("response.output_audio.delta", delta="")) is False
+
+
+@pytest.mark.asyncio
+async def test_a_cue_is_asked_for_outside_the_conversation(monkeypatch: Any) -> None:
+    """The request uses conversation 'none', audio only and no tools, so the model's chat never sees it."""
+    handler = _plain_handler()
+    sent: list[dict[str, Any]] = []
+
+    async def fake_create(**kwargs: Any) -> None:
+        sent.append(kwargs)
+        assert handler._cue_result is not None
+        handler._cue_result.set_result(True)
+
+    monkeypatch.setattr(handler, "_safe_response_create", fake_create)
+
+    assert await handler._capture_breath_cue("out") is True
+    assert sent[0]["_tag"] == "cue:out"
+    response = sent[0]["response"]
+    assert response["conversation"] == "none" and response["output_modalities"] == ["audio"]
+    assert response["tool_choice"] == "none" and "Breathe out." in response["instructions"]
+
+
+@pytest.mark.asyncio
+async def test_the_answer_after_a_break_gets_a_note_and_a_backup(monkeypatch: Any) -> None:
+    """Right after 'How do you feel now', the model is told the next words answer it; the app keeps the answer."""
+    handler = _plain_handler()
+    notes: list[str] = []
+    saved: list[tuple[str, str]] = []
+
+    async def note(text: str) -> None:
+        notes.append(text)
+
+    async def save_later(break_id: str, answer: str, _speaker_id: Any) -> None:
+        saved.append((break_id, answer))
+
+    monkeypatch.setattr(handler, "_send_app_note", note)
+    monkeypatch.setattr(hf_mod.break_check, "record_heard_answer_later", save_later)
+    monkeypatch.setattr(hf_mod.day_center, "current_speaker", lambda *_: ("P01", "Sam"))
+    hf_mod.break_check.answered.clear()
+    hf_mod.break_check.expect_answer("b7")
+
+    await handler._note_feel_question_asked()
+    await handler._note_feel_question_asked()  # the same question again: no second note
+    handler._save_heard_break_answer("Not good.")
+    handler._save_heard_break_answer("Something else.")  # only the first words after the question count
+    await asyncio.sleep(0)
+
+    assert len(notes) == 1 and "break_id b7" in notes[0] and "One more break, or help from staff?" in notes[0]
+    assert saved == [("b7", "not good")]
+    hf_mod.break_check.awaiting = None
+
+
+@pytest.mark.asyncio
+async def test_reachys_own_breathing_cue_heard_back_gets_no_reply(monkeypatch: Any) -> None:
+    """During breathing, 'Breathe in.' coming back through the microphone cancels the reply the server started."""
+    events = (
+        _FakeEvent("conversation.item.input_audio_transcription.completed", item_id="i1", transcript="Breathe in."),
+    )
+    handler = _session_handler(monkeypatch, events)
+    monkeypatch.setattr(hf_mod.take_break, "running_activity", lambda: "breathe")
+    recorded: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(hf_mod.study_log, "record_event", lambda name, **fields: recorded.append((name, fields)))
+    monkeypatch.setattr(hf_mod.breath_cues, "missing", lambda: [])
+    cancel = AsyncMock()
+    monkeypatch.setattr(handler, "_cancel_reply_to_echo", cancel)
+
+    await handler._run_realtime_session()
+
+    cancel.assert_awaited_once()
+    assert ("cue_echo_ignored", {"heard": "Breathe in."}) in recorded
+
+
+@pytest.mark.asyncio
+async def test_cue_preparation_stops_for_the_session_after_two_failures(monkeypatch: Any) -> None:
+    """If the server cannot say a cue, the app asks twice and then leaves it for the next session."""
+    handler = _plain_handler()
+    asked: list[str] = []
+
+    async def quiet() -> bool:
+        return True
+
+    async def fail(name: str) -> bool:
+        asked.append(name)
+        return False
+
+    monkeypatch.setattr(handler, "_wait_for_quiet_room", quiet)
+    monkeypatch.setattr(handler, "_capture_breath_cue", fail)
+    monkeypatch.setattr(hf_mod.breath_cues, "missing", lambda: ["in", "out"])
+
+    await handler._prepare_breath_cues()
+
+    assert asked == ["in", "in"]

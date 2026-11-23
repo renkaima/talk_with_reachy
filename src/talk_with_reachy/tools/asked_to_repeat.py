@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 STAFF = "Okay. Please go to a staff member, or wave to one."
 SAFE = "Please tell a staff member now. This is important."
+# A cold or a headache is not urgent: kind, then staff (decision of 2026-11-20).
+MINOR_UNWELL = "I am sorry you do not feel well. Staff can help you with that."
 # What to say and do once an answer is matched to a known choice, so the step goes on and does not stop at
 # "Sick. Okay." (keys are choices.canonical names).
 NEXT_STEP: dict[str, tuple[str, str]] = {
@@ -112,9 +114,12 @@ class AskedToRepeat(Tool):
                     },
                 )
         # Hurt, sick, or scared always goes to staff (CALM AND SAFE), even right after another question.
-        if choices.says_unwell(heard):
+        unwell = choices.unwell_level(heard)
+        if unwell == "urgent":
             take_break.stop_running_break("tool", heard)
             return matched("sick", {"say": SAFE, "next": "Do not start an activity."})
+        if unwell == "minor":
+            return matched("minor unwell", {"say": MINOR_UNWELL, "next": "Do not ask this question again now."})
         # Whole requests do what they say, even right after another question (exact words only).
         request = choices.request_in(heard)
         if request == "staff":

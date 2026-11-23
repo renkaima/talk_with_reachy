@@ -8,7 +8,7 @@ from collections.abc import Iterator
 import numpy as np
 import pytest
 
-from talk_with_reachy import study_log, day_center
+from talk_with_reachy import study_log, day_center, breath_cues
 from talk_with_reachy.tools import take_break as take_break_module
 from talk_with_reachy.tools.core_tools import ToolDependencies
 
@@ -24,9 +24,13 @@ def no_break_left_over() -> Iterator[None]:
 
 
 @pytest.fixture
-def events(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
-    """Capture study events and skip the waiting (unless the break is stopped), with P01 'Sam' speaking."""
+def events(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[str, dict[str, Any]]]:
+    """Capture study events and skip the waiting (unless the break is stopped), with P01 'Sam' speaking.
+
+    The data folder is empty, so no breathing cues are saved unless a test saves them.
+    """
     recorded: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setenv(study_log.DATA_DIR_ENV, str(tmp_path))
 
     async def no_wait(_seconds: float) -> None:
         return None
@@ -106,11 +110,12 @@ async def test_take_break_returns_at_once_and_reports_the_end_later(events: list
     assert outcome["status"] == "finished" and outcome["respond"] is True
     assert "All done. How do you feel now: good, or not good?" in outcome["note"]
     assert result["break_id"] in outcome["note"]
-    assert [name for name, _ in events][:2] == ["break_started", "break_finished"]
+    assert [name for name, _ in events][:3] == ["break_started", "breath_cues", "break_finished"]
     started = events[0][1]
     assert started["person"] == "Sam" and started["speaker_id"] == "P01"
     assert started["feeling_said"] == "I don't feel well" and "feeling" not in started
-    assert events[1][1]["completed"] is True and events[1][1]["ended"] == "finished"
+    assert events[1][1]["spoken"] is False  # no cues saved: the breathing runs silently, as before
+    assert events[2][1]["completed"] is True and events[2][1]["ended"] == "finished"
     assert take_break_module.running_activity() is None
 
 
@@ -426,3 +431,58 @@ async def test_asking_for_another_activity_switches_to_it(events: list[tuple[str
     assert result["status"] == "started" and first.done()
     take_break_module.stop_running_break("words", "Stop.")
     await second
+
+
+@pytest.mark.asyncio
+async def test_breathing_says_in_and_out_on_every_breath_when_cues_are_saved(
+    events: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """With both cues saved, "Breathe in." and "Breathe out." play twelve times in turn, between the chimes."""
+    breath_cues.set_current("test-voice", 0.55)
+    for name in breath_cues.CUES:
+        path = breath_cues.cue_path(name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"RIFF")
+    deps = _deps()
+
+    _, task = await _start(deps, activity="breathe", started_by="self")
+    await task
+
+    played = _played(deps)
+    cues = [name for name in played if name.startswith("test-voice")]
+    assert cues == ["test-voice_55_in.wav", "test-voice_55_out.wav"] * take_break_module.BREATHS
+    assert played[0] == "chime_start.wav" and played[-1] == "chime_end.wav"
+    assert ("breath_cues", {"break_id": events[0][1]["break_id"], "spoken": True}) in events
+
+
+@pytest.mark.asyncio
+async def test_another_song_replaces_the_running_song_with_a_different_one(
+    events: list[tuple[str, dict[str, Any]]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """'Another song' during the music stops it and starts a different track, instead of 'already running'."""
+    tracks = [Path("calm_a.wav"), Path("calm_b.wav")]
+    chosen: list[Path] = []
+    playing = asyncio.Event()
+
+    async def fake_music(_deps: Any, track: Path, _break_id: str, stop: asyncio.Event) -> str:
+        chosen.append(track)
+        playing.set()
+        await stop.wait()
+        return "stop"
+
+    monkeypatch.setattr(take_break_module, "play_break_music", fake_music)
+    monkeypatch.setattr(take_break_module.SOUNDS_DIR.__class__, "glob", lambda _self, _pattern: iter(tracks))
+    deps = _deps()
+
+    _, first = await _start(deps, activity="music", started_by="self")
+    await asyncio.wait_for(playing.wait(), timeout=5)
+    playing.clear()
+    same = await take_break_module.TakeBreak()(deps, activity="music", started_by="self")
+    another, second = await _start(deps, activity="music", started_by="self", another_song=True)
+    await asyncio.wait_for(playing.wait(), timeout=5)
+    take_break_module.stop_running_break("words", "Stop.")
+    await asyncio.gather(first, second)
+
+    assert "already running" in same["error"]
+    assert another["say"] == "Another song. Okay. Say stop any time."
+    assert chosen[0] != chosen[1]

@@ -26,8 +26,8 @@ from openai.types.realtime import (
 from websockets.exceptions import ConnectionClosedError
 from openai.types.realtime.realtime_audio_input_turn_detection_param import ServerVad
 
-from talk_with_reachy import choices, study_log, slow_speech
-from talk_with_reachy.tools import core_tools, take_break
+from talk_with_reachy import choices, study_log, day_center, breath_cues, slow_speech
+from talk_with_reachy.tools import core_tools, take_break, break_check
 from talk_with_reachy.config import (
     HF_LOCAL_CONNECTION_MODE,
     config,
@@ -72,6 +72,20 @@ MUSIC_RESUME_WITHOUT_WORDS_S: Final = 6.0
 MUSIC_RESUME_IF_SILENT_S: Final = 25.0
 # Longest time the reply to the end of a break waits for a person to finish talking.
 BREAK_END_HOLD_MAX_S: Final = 10.0
+# Longest wait for the speech server to say one breathing cue outside the conversation.
+CUE_CAPTURE_TIMEOUT_S: Final = 30.0
+# Seconds the room must stay quiet (nobody talking, Reachy silent, no break) before a cue is asked for.
+CUE_QUIET_S: Final = 3.0
+# Longest wait for such a quiet moment in one session.
+CUE_WAIT_MAX_S: Final = 600.0
+# Told to the model right after Reachy asks how someone feels after a break, so that "not good" is taken as the
+# answer and not as a new complaint (in a test, "Not good." led to "Sick, or upset?").
+FEEL_ANSWER_NOTE: Final = (
+    "Reachy just asked how they feel after the break. The person's next words answer that question, also "
+    "'not good' or 'bad': call break_check with break_id {break_id} and their answer. After 'not good', say "
+    "'One more break, or help from staff?'. After any other answer, say 'Come back any time you need me.'. "
+    "Do not ask 'Sick, or upset?' now."
+)
 _RESPONSE_DONE_TIMEOUT: Final[float] = 30.0
 _RESPONSE_REJECTION_RETRY_DELAY: Final[float] = 0.5
 
@@ -193,6 +207,13 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         self._break_end_after_reply = False
         self._hold_timer: asyncio.Task[None] | None = None
         self._reply_text = ""
+        # The finished break whose "How do you feel now" question Reachy has just asked, until the person answers.
+        self._feel_question_break_id: str | None = None
+        self._heard_answer_tasks: set[asyncio.Task[None]] = set()
+        # Saying the breathing cues once, outside the conversation (see breath_cues).
+        self._cue_task: asyncio.Task[None] | None = None
+        self._cue_capture: dict[str, Any] | None = None
+        self._cue_result: asyncio.Future[bool] | None = None
         # After a reply that was only a tool call, the follow-up reply comes a moment later; until then, Reachy
         # counts as about to speak, so a break does not start (or the music resume) under its words.
         self._reply_expected_until = 0.0
@@ -576,6 +597,149 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
 
         self._music_resume_task = asyncio.create_task(resume_later(), name="music-resume")
 
+    def _take_cue_event(self, event: Any) -> bool:
+        """Keep the audio of a breathing cue instead of playing it; return whether the event belonged to the cue."""
+        if event.type == "response.created":
+            if self._cue_capture is not None or not (self._sent_tag or "").startswith("cue:"):
+                return False
+            tag, self._sent_tag = self._sent_tag or "", None
+            self._cue_capture = {"name": tag.removeprefix("cue:"), "pcm": [], "text": ""}
+            self._response_done_event.clear()
+            self._response_started_or_rejected_event.set()
+            return True
+        capture = self._cue_capture
+        if capture is None:
+            return False
+        if event.type == "response.output_audio.delta":
+            capture["pcm"].append(np.frombuffer(base64.b64decode(event.delta), dtype=np.int16))
+            return True
+        if event.type == "response.output_audio_transcript.done":
+            capture["text"] = getattr(event, "transcript", "") or ""
+            return True
+        if event.type == "response.done":
+            self._cue_capture = None
+            status = getattr(getattr(event, "response", None), "status", None)
+            saved = False
+            if status == "completed" and capture["pcm"]:
+                slower = slow_speech.SpeechSlower(get_session_speech_speed(), rate=self.SAMPLE_RATE)
+                raw = np.concatenate(capture["pcm"])
+                slowed = np.concatenate([slower.process(raw), slower.flush()])
+                saved = breath_cues.save(capture["name"], slowed, self.SAMPLE_RATE, capture["text"])
+            if self._cue_result is not None and not self._cue_result.done():
+                self._cue_result.set_result(saved)
+            self._response_tag = None
+            self._response_done_event.set()
+            self._response_started_or_rejected_event.set()
+            return True
+        # Everything else about the cue's response (text, content parts) is not part of the conversation.
+        return bool(event.type.startswith("response."))
+
+    def _room_is_quiet(self) -> bool:
+        """Tell whether nothing is going on: no reply, no one talking, Reachy silent, and no break."""
+        return (
+            self.connection is not None
+            and self._response_done_event.is_set()
+            and self._pending_responses.empty()
+            and not self._user_turn_open
+            and self.seconds_until_reachy_is_quiet() <= 0
+            and take_break.running_activity() is None
+        )
+
+    async def _wait_for_quiet_room(self) -> bool:
+        """Wait until the room has been quiet for CUE_QUIET_S; False if that did not happen in time."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + CUE_WAIT_MAX_S
+        quiet_since: float | None = None
+        while loop.time() < deadline and self.connection is not None:
+            if self._room_is_quiet():
+                quiet_since = quiet_since if quiet_since is not None else loop.time()
+                if loop.time() - quiet_since >= CUE_QUIET_S:
+                    return True
+            else:
+                quiet_since = None
+            await asyncio.sleep(0.25)
+        return False
+
+    async def _capture_breath_cue(self, name: str) -> bool:
+        """Ask the speech server, outside the conversation, to say one cue; return whether it was saved."""
+        words = breath_cues.CUES[name]
+        self._cue_result = asyncio.get_running_loop().create_future()
+        try:
+            await self._safe_response_create(
+                _tag=f"cue:{name}",
+                response={
+                    # "none": the request and its answer stay out of the conversation the model sees.
+                    "conversation": "none",
+                    "instructions": f"Say exactly these words and nothing else: {words}",
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": f"Say: {words}"}],
+                        }
+                    ],
+                    "output_modalities": ["audio"],
+                    "tool_choice": "none",
+                },
+            )
+            return await asyncio.wait_for(asyncio.shield(self._cue_result), timeout=CUE_CAPTURE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            logger.warning("Breath cue %r: no answer from the speech server", name)
+            return False
+        finally:
+            self._cue_result = None
+
+    async def _prepare_breath_cues(self) -> None:
+        """Save the breathing cues for this voice and speed, at quiet moments, two tries each.
+
+        A cue that fails twice ends the attempt for this session (the next session tries again), so a server that
+        cannot do it does not keep being asked.
+        """
+        try:
+            for name in breath_cues.missing():
+                for _ in range(2):
+                    if not await self._wait_for_quiet_room():
+                        return
+                    if await self._capture_breath_cue(name):
+                        break
+                else:
+                    return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Preparing the breathing cues failed")
+
+    async def _cancel_reply_to_echo(self) -> None:
+        """Stop the reply the server started to words that were only Reachy's own sound."""
+        if self._clear_queue:
+            self._clear_queue()
+        if self.connection is None:
+            return
+        try:
+            await self.connection.response.cancel()
+        except Exception as e:
+            logger.debug("Cancelling the reply to an echo failed: %s", e)
+
+    async def _note_feel_question_asked(self) -> None:
+        """After Reachy asks how someone feels after a break, tell the model that the next words answer it."""
+        break_id = break_check.waiting_break_id()
+        if break_id is None or break_id == self._feel_question_break_id:
+            return
+        self._feel_question_break_id = break_id
+        await self._send_app_note(FEEL_ANSWER_NOTE.format(break_id=break_id))
+
+    def _save_heard_break_answer(self, transcript: str) -> None:
+        """Keep the person's answer to the question after a break, in case the model does not save it."""
+        break_id, self._feel_question_break_id = self._feel_question_break_id, None
+        if break_id is None or break_id in break_check.answered:
+            return
+        speaker_id, _ = day_center.current_speaker()
+        task = asyncio.create_task(
+            break_check.record_heard_answer_later(break_id, choices.after_break_answer(transcript), speaker_id)
+        )
+        self._heard_answer_tasks.add(task)
+        task.add_done_callback(self._heard_answer_tasks.discard)
+
     async def _send_app_note(self, text: str) -> None:
         """Add a note from the app to the conversation, in time order, without asking for a reply.
 
@@ -900,6 +1064,7 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
         self._user_turn_open = False
         self._break_end_reply_held = False
         self._break_end_after_reply = False
+        self._feel_question_break_id = None
         tool_specs = get_tool_specs()
         logger.info(
             "Tools to be used in conversation: %s",
@@ -944,9 +1109,16 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                 # Start the response sender worker
                 response_sender_task = asyncio.create_task(self._response_sender_loop(), name="response-sender")
                 await self._send_startup_greeting_prompt()
+                breath_cues.set_current(self.get_current_voice(), get_session_speech_speed())
+                if breath_cues.missing():
+                    self._cue_task = asyncio.create_task(self._prepare_breath_cues(), name="breath-cues")
 
                 async for event in self.connection:
                     logger.debug("Realtime event: %s", event.type)
+                    if (self._cue_capture is not None or event.type == "response.created") and self._take_cue_event(
+                        event
+                    ):
+                        continue
                     if event.type == "input_audio_buffer.speech_started":
                         self.study.user_speech_started(
                             str(getattr(event, "item_id", "") or ""), getattr(event, "audio_start_ms", None)
@@ -1036,6 +1208,8 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                             self._break_end_after_reply = False
                             if "how do you feel" not in self._reply_text.lower():
                                 await self._safe_response_create(_tag="break_end")
+                        if "how do you feel now" in self._reply_text.lower():
+                            await self._note_feel_question_asked()
                         self._response_tag = None
                         self._response_done_event.set()
                         self._response_started_or_rejected_event.set()
@@ -1098,6 +1272,11 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                         await self.output_queue.put(AdditionalOutputs({"role": "user", "content": transcript}))
                         self.study.user_transcript(str(getattr(event, "item_id", "") or ""), transcript)
                         self._apply_break_words(transcript)
+                        self._save_heard_break_answer(transcript)
+                        if take_break.running_activity() == "breathe" and breath_cues.is_cue_echo(transcript):
+                            # Reachy's own "Breathe in." came back through the microphone: no reply to it.
+                            study_log.record_event("cue_echo_ignored", heard=transcript)
+                            await self._cancel_reply_to_echo()
                         self._emit_transcript("user", transcript, True)
 
                     # Handle assistant transcription
@@ -1222,6 +1401,12 @@ class HuggingFaceRealtimeHandler(ConversationHandler):
                 await self.tool_manager.shutdown()
                 # A break activity runs outside the tool manager; stop it with the session.
                 await take_break.cancel_running_break()
+                if self._cue_task is not None:
+                    self._cue_task.cancel()
+                    self._cue_task = None
+                self._cue_capture = None
+                if self._cue_result is not None and not self._cue_result.done():
+                    self._cue_result.set_result(False)
 
     # Microphone receive
     async def receive(self, frame: Tuple[int, NDArray[np.int16]]) -> None:

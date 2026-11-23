@@ -165,3 +165,17 @@ async def test_yes_to_the_greeting_means_talk(recorded: list[tuple[str, dict[str
     assert result["they_chose"] == "talk"
     assert result["say"] == "Okay. Tell me about your day, or ask me a question."
     assert [name for name, _ in recorded] == ["answer_matched"]
+
+
+@pytest.mark.asyncio
+async def test_a_cold_gets_the_calm_staff_sentence(
+    recorded: list[tuple[str, dict[str, Any]]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A runny nose is not urgent: kind words and staff, no 'This is important', and the break goes on."""
+    stops: list[str] = []
+    monkeypatch.setattr(take_break, "stop_running_break", lambda source, words="": stops.append(words) or True)
+
+    result = await _ask(heard="I have a cold and my nose is runny.", choices=["breathing", "music"])
+
+    assert result["say"] == "I am sorry you do not feel well. Staff can help you with that."
+    assert stops == []
